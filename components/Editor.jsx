@@ -9,8 +9,8 @@ import { Workspace } from 'polotno/canvas/workspace';
 import { createStore } from 'polotno/model/store';
 
 // Your custom sections only
-import { ImagApiSection } from '../sections/imagapi';
-import { BtchImgSection } from '../sections/btchimg';
+import { ImagApiSection } from 'sections/imagapi';
+import { BtchImgSection } from 'sections/btchimg';
 
 import "@blueprintjs/icons/lib/css/blueprint-icons.css";
 import "@blueprintjs/core/lib/css/blueprint.css";
