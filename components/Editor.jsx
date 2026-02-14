@@ -1,5 +1,6 @@
+// components/Editor.jsx
+
 import React from 'react';
-import ReactDOM from 'react-dom/client';
 import { PolotnoContainer, SidePanelWrap, WorkspaceWrap } from 'polotno';
 import { Toolbar } from 'polotno/toolbar/toolbar';
 import { ZoomButtons } from 'polotno/toolbar/zoom-buttons';
@@ -7,15 +8,9 @@ import { SidePanel, DEFAULT_SECTIONS } from 'polotno/side-panel';
 import { Workspace } from 'polotno/canvas/workspace';
 import { createStore } from 'polotno/model/store';
 
-import { QrSection } from './sections/qr-section';
-import { IconsSection } from './sections/icons-section';
-import { ShapesSection } from './sections/shapes-section';
-import { QuotesSection } from './sections/quotes-section';
-// import { StableDiffusionSection } from './sections/stable-diffusion-section';
-import { StableDiffusionSection } from './sections/dalle2';
-
-// import { useObserver } from 'mobx-react-lite';
-// import sharedStateStore, { updateState } from './store';
+// Your custom sections only
+import { ImagApiSection } from '../sections/imagapi';
+import { BtchImgSection } from '../sections/btchimg';
 
 import "@blueprintjs/icons/lib/css/blueprint-icons.css";
 import "@blueprintjs/core/lib/css/blueprint.css";
@@ -26,29 +21,26 @@ const store = createStore({
   showCredit: false,
 });
 
-const page = store.addPage();
-// page.addElement({
-//   type: 'video',
-//   x: 200,
-//   y: 200,
-//   width: 500,
-//   height: 500,
-//   src: 'https://vs.contentportal.link/assets/8b413ea8-7d60-4ebb-bf96-d22f8bf4c87f'
-// });
+store.addPage();
 
-DEFAULT_SECTIONS.push(QrSection);
-DEFAULT_SECTIONS.splice(3, 1, ShapesSection);
-DEFAULT_SECTIONS.splice(3, 0, IconsSection);
-DEFAULT_SECTIONS.push(QuotesSection);
-DEFAULT_SECTIONS.push(StableDiffusionSection);
+// Use official Polotno sections + your two custom ones
+const mySections = [
+  ...DEFAULT_SECTIONS,          // keeps official Templates, Elements, Text, etc.
+  ImagApiSection,               // your image/assets search
+  BtchImgSection,               // your batch generation
+];
 
-export const Editor = ({ }) => {
-  
+export default function Editor() {
   return (
     <PolotnoContainer style={{ width: "100vw", height: "100vh" }}>
       <SidePanelWrap>
-        <SidePanel store={store} />
+        <SidePanel 
+          store={store} 
+          sections={mySections}
+          defaultSection="templates"  // open the official templates tab first
+        />
       </SidePanelWrap>
+
       <WorkspaceWrap>
         <Toolbar store={store} downloadButtonEnabled />
         <Workspace store={store} />
@@ -56,10 +48,4 @@ export const Editor = ({ }) => {
       </WorkspaceWrap>
     </PolotnoContainer>
   );
-};
-
-export default Editor;
-
-// export const exportDataURL = async () => {
-//   return await store.toDataURL()
-// }
+}
