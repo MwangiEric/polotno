@@ -8,9 +8,10 @@ import { SidePanel, DEFAULT_SECTIONS } from 'polotno/side-panel';
 import { Workspace } from 'polotno/canvas/workspace';
 import { createStore } from 'polotno/model/store';
 
-// Your custom sections only
+// Your custom sections (all inside components/sections/)
 import { ImagApiSection } from './sections/imagapi';
 import { BtchImgSection } from './sections/btchimg';
+import { JsonViewerSection } from './sections/json-viewer';
 
 import "@blueprintjs/icons/lib/css/blueprint-icons.css";
 import "@blueprintjs/core/lib/css/blueprint.css";
@@ -23,11 +24,11 @@ const store = createStore({
 
 store.addPage();
 
-// Use official Polotno sections + your two custom ones
 const mySections = [
-  ...DEFAULT_SECTIONS,          // keeps official Templates, Elements, Text, etc.
-  ImagApiSection,               // your image/assets search
-  BtchImgSection,               // your batch generation
+  ...DEFAULT_SECTIONS,          // Official Polotno: Templates, Text, Upload, Backgrounds, Elements, etc.
+  ImagApiSection,               // Your custom Assets / image search
+  BtchImgSection,               // Your custom Batch Images
+  JsonViewerSection,            // Raw JSON viewer + Pillow export
 ];
 
 export default function Editor() {
@@ -37,7 +38,7 @@ export default function Editor() {
         <SidePanel 
           store={store} 
           sections={mySections}
-          defaultSection="templates"  // open the official templates tab first
+          defaultSection="templates"   // Opens official templates gallery first
         />
       </SidePanelWrap>
 
