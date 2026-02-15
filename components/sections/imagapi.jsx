@@ -1,6 +1,8 @@
+// src/sections/imagapi.jsx
+
 import React, { useState, useEffect } from 'react';
 import { observer } from 'mobx-react-lite';
-import { InputGroup, HTMLSelect, Button } from '@blueprintjs/core';
+import { InputGroup, HTMLSelect, Button, Spinner, Callout } from '@blueprintjs/core';
 import { ImagesGrid } from 'polotno/side-panel/images-grid';
 import { SectionTab } from 'polotno/side-panel';
 import FaImages from '@meronex/icons/fa/FaImages';
@@ -21,20 +23,22 @@ export const ImagApiPanel = observer(({ store }) => {
   const [query, setQuery] = useState(ASSET_TYPES[0].defaultQuery);
   const [images, setImages] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [status, setStatus] = useState('');
+  const [error, setError] = useState(null);
 
   const selectedType = ASSET_TYPES.find(t => t.value === assetType);
 
   const fetchAssets = async () => {
     const safeQuery = (query || '').trim();
-    if (safeQuery.length < 2) {
+
+    if (!safeQuery || safeQuery.length < 2) {
       setImages([]);
       setLoading(false);
+      setError(null);
       return;
     }
 
     setLoading(true);
-    setStatus('Searching...');
+    setError(null);
     setImages([]);
 
     let searchQuery = safeQuery;
@@ -42,44 +46,60 @@ export const ImagApiPanel = observer(({ store }) => {
       searchQuery += ' large high resolution 4k background wallpaper';
     }
 
-    const targetUrl = `https://imagapi.vercel.app/api/v1/assets/search?asset_type=\( {assetType}&q= \){encodeURIComponent(searchQuery)}&n=30`;
+    // Proper encoding
+    const encodedQuery = encodeURIComponent(searchQuery);
+
+    const targetUrl = `https://imagapi.vercel.app/api/v1/assets/search?asset_type=\( {assetType}&q= \){encodedQuery}&n=30`;
 
     try {
       const response = await fetch(targetUrl);
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
       const data = await response.json();
 
       if (data.images && Array.isArray(data.images)) {
         const formatted = data.images.map(item => ({
           thumbnail: item.thumbnail || item.url,
           full: item.url,
-          alt: item.title || `${selectedType.label} item`
+          alt: item.title || `${selectedType?.label || 'item'}`
         }));
         setImages(formatted);
-        setStatus(`Found ${formatted.length} results`);
       } else {
-        setStatus('No images found');
+        setError('Invalid response format');
       }
     } catch (err) {
-      setStatus(`Search error: ${err.message}`);
-      console.error(err);
+      setError(err.message || 'Failed to load assets');
+      console.error('Fetch error:', err, 'URL:', targetUrl);
     } finally {
       setLoading(false);
     }
   };
 
+  // Auto-search with debounce
   useEffect(() => {
-    const timer = setTimeout(fetchAssets, 500);
+    const timer = setTimeout(fetchAssets, 600);
     return () => clearTimeout(timer);
   }, [query, assetType]);
 
-  const addFullImage = (item) => {
-    const fullSrc = item.full || item.thumbnail;
+  const clearResults = () => {
+    setQuery('');
+    setImages([]);
+    setError(null);
+  };
 
+  const addToCanvasCenter = (item) => {
+    const fullSrc = item.full || item.thumbnail;
+    if (!fullSrc) return;
+
+    // Get current canvas dimensions
     const canvasWidth = store.width;
     const canvasHeight = store.height;
+
+    // Calculate size to fit nicely in center (80% of smaller dimension)
     const maxSize = Math.min(canvasWidth * 0.8, canvasHeight * 0.8);
 
+    // Add image centered
     store.activePage.addElement({
       type: 'image',
       src: fullSrc,
@@ -88,12 +108,13 @@ export const ImagApiPanel = observer(({ store }) => {
       width: maxSize,
       height: maxSize,
       keepRatio: true,
+      name: 'added-from-assets' // optional tag
     });
   };
 
-  const setBackgroundFromFirst = () => {
+  const setAsBackground = () => {
     if (images.length === 0) {
-      setStatus('No images to set as background');
+      setError('No images available');
       return;
     }
 
@@ -106,14 +127,6 @@ export const ImagApiPanel = observer(({ store }) => {
       backgroundRepeat: 'no-repeat',
       backgroundColor: 'transparent',
     });
-
-    setStatus('Background set');
-  };
-
-  const clearSearch = () => {
-    setQuery('');
-    setImages([]);
-    setStatus('');
   };
 
   return (
@@ -122,7 +135,6 @@ export const ImagApiPanel = observer(({ store }) => {
       display: 'flex',
       flexDirection: 'column',
       padding: 12,
-      overflow: 'hidden',
     }}>
       <HTMLSelect
         fill
@@ -150,43 +162,51 @@ export const ImagApiPanel = observer(({ store }) => {
         value={query}
         onChange={e => setQuery(e.target.value)}
         rightElement={
-          query && <Button minimal icon="cross" onClick={clearSearch} small />
+          query && (
+            <Button minimal icon="cross" onClick={clearResults} small />
+          )
         }
         style={{ marginBottom: 12 }}
       />
 
-      <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+      <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
         <Button
           intent="primary"
           small
-          onClick={setBackgroundFromFirst}
+          onClick={setAsBackground}
           disabled={images.length === 0 || loading}
         >
-          Set Background from First Result
+          Set First as Background
         </Button>
       </div>
 
-      {loading && <div style={{ textAlign: 'center', padding: 20 }}>Loading...</div>}
-
-      {!loading && images.length === 0 && query.trim() && (
-        <div style={{ textAlign: 'center', color: '#666', padding: 20 }}>
-          No results found
+      {loading && (
+        <div style={{ textAlign: 'center', padding: '30px 0' }}>
+          <Spinner size={40} />
+          <div style={{ marginTop: 10 }}>Loading...</div>
         </div>
       )}
 
-      <div style={{
-        flex: 1,
-        overflowY: 'auto',
-        paddingRight: 8,
-      }}>
+      {error && (
+        <Callout intent="danger" style={{ marginBottom: 16 }}>
+          {error}
+        </Callout>
+      )}
+
+      {!loading && !error && images.length === 0 && query.trim() && (
+        <div style={{ textAlign: 'center', padding: '40px 0', color: '#888' }}>
+          No results found for "{query}"
+        </div>
+      )}
+
+      <div style={{ flex: 1, overflowY: 'auto' }}>
         <ImagesGrid
           key={`\( {assetType}- \){query}`}
           images={images}
           getPreview={img => img.thumbnail}
           rowsNumber={selectedType?.value === 'backgrounds' ? 4 : 6}
           isLoading={loading}
-          onSelect={addFullImage}
-          style={{ paddingBottom: 40 }}
+          onSelect={addToCanvasCenter}  // ← adds to exact center
         />
       </div>
     </div>
