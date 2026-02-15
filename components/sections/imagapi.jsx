@@ -1,4 +1,4 @@
-// src/sections/imagapi.jsx
+// components/sections/imagapi.jsx
 
 import React, { useState, useEffect } from 'react';
 import { observer } from 'mobx-react-lite';
@@ -46,15 +46,17 @@ export const ImagApiPanel = observer(({ store }) => {
       searchQuery += ' large high resolution 4k background wallpaper';
     }
 
-    // Proper encoding
+    // Properly encode the query parameter
     const encodedQuery = encodeURIComponent(searchQuery);
 
     const targetUrl = `https://imagapi.vercel.app/api/v1/assets/search?asset_type=\( {assetType}&q= \){encodedQuery}&n=30`;
 
+    console.log('Fetching assets from:', targetUrl); // ← for debugging
+
     try {
       const response = await fetch(targetUrl);
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
+        throw new Error(`HTTP error! Status: ${response.status}`);
       }
       const data = await response.json();
 
@@ -66,17 +68,17 @@ export const ImagApiPanel = observer(({ store }) => {
         }));
         setImages(formatted);
       } else {
-        setError('Invalid response format');
+        setError('Invalid response format from API');
       }
     } catch (err) {
       setError(err.message || 'Failed to load assets');
-      console.error('Fetch error:', err, 'URL:', targetUrl);
+      console.error('Fetch error:', err, 'URL was:', targetUrl);
     } finally {
       setLoading(false);
     }
   };
 
-  // Auto-search with debounce
+  // Debounced auto-search
   useEffect(() => {
     const timer = setTimeout(fetchAssets, 600);
     return () => clearTimeout(timer);
@@ -88,30 +90,35 @@ export const ImagApiPanel = observer(({ store }) => {
     setError(null);
   };
 
+  // Add selected image to the **center** of the current canvas
   const addToCanvasCenter = (item) => {
     const fullSrc = item.full || item.thumbnail;
     if (!fullSrc) return;
 
-    // Get current canvas dimensions
+    // Get current canvas size
     const canvasWidth = store.width;
     const canvasHeight = store.height;
 
-    // Calculate size to fit nicely in center (80% of smaller dimension)
+    // Fit nicely: 80% of the smaller dimension
     const maxSize = Math.min(canvasWidth * 0.8, canvasHeight * 0.8);
 
-    // Add image centered
+    // Center position
+    const centerX = (canvasWidth - maxSize) / 2;
+    const centerY = (canvasHeight - maxSize) / 2;
+
     store.activePage.addElement({
       type: 'image',
       src: fullSrc,
-      x: (canvasWidth - maxSize) / 2,
-      y: (canvasHeight - maxSize) / 2,
+      x: centerX,
+      y: centerY,
       width: maxSize,
       height: maxSize,
-      keepRatio: true,
-      name: 'added-from-assets' // optional tag
+      keepRatio: true,          // preserve original aspect ratio
+      name: 'added-from-imagapi'
     });
   };
 
+  // Optional: set first result as background
   const setAsBackground = () => {
     if (images.length === 0) {
       setError('No images available');
@@ -183,7 +190,7 @@ export const ImagApiPanel = observer(({ store }) => {
       {loading && (
         <div style={{ textAlign: 'center', padding: '30px 0' }}>
           <Spinner size={40} />
-          <div style={{ marginTop: 10 }}>Loading...</div>
+          <div style={{ marginTop: 10 }}>Loading assets...</div>
         </div>
       )}
 
@@ -206,7 +213,7 @@ export const ImagApiPanel = observer(({ store }) => {
           getPreview={img => img.thumbnail}
           rowsNumber={selectedType?.value === 'backgrounds' ? 4 : 6}
           isLoading={loading}
-          onSelect={addToCanvasCenter}  // ← adds to exact center
+          onSelect={addToCanvasCenter}  // adds to center of canvas
         />
       </div>
     </div>
