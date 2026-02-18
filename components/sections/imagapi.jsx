@@ -1,9 +1,13 @@
+// components/sections/imagapi.jsx
+
 import React, { useState, useEffect, useCallback } from 'react';
 import { observer } from 'mobx-react-lite';
 import { InputGroup, HTMLSelect, Button, Spinner, Callout } from '@blueprintjs/core';
 import { ImagesGrid } from 'polotno/side-panel/images-grid';
 import { SectionTab } from 'polotno/side-panel';
 import FaImages from '@meronex/icons/fa/FaImages';
+
+// Suppress <img> warnings for this component
 /* eslint-disable @next/next/no-img-element */
 
 const ASSET_TYPES = [
@@ -29,21 +33,23 @@ export const ImagApiPanel = observer(({ store }) => {
   const fetchAssets = useCallback(async () => {
     const safeQuery = (query || '').trim();
 
-    // Prevent API calls for very short queries
     if (!safeQuery || safeQuery.length < 2) {
+      setImages([]);
+      setLoading(false);
+      setError(null);
       return;
     }
 
     setLoading(true);
     setError(null);
+    setImages([]);
 
     let searchQuery = safeQuery;
     if (assetType === 'backgrounds') {
-      searchQuery += ' high resolution background';
+      searchQuery += ' large high resolution 4k background wallpaper';
     }
 
     const encodedQuery = encodeURIComponent(searchQuery);
-    // FIXED: Corrected template literal syntax from \( \) to ${ }
     const targetUrl = `https://imagapi.vercel.app/api/v1/assets/search?asset_type=${assetType}&q=${encodedQuery}&n=30`;
 
     try {
@@ -72,11 +78,9 @@ export const ImagApiPanel = observer(({ store }) => {
   }, [query, assetType, selectedType]);
 
   useEffect(() => {
-    const timer = setTimeout(() => {
-      fetchAssets();
-    }, 600);
+    const timer = setTimeout(fetchAssets, 600);
     return () => clearTimeout(timer);
-  }, [fetchAssets], [query, setQuery]);
+  }, [fetchAssets]);
 
   const clearResults = () => {
     setQuery('');
@@ -84,36 +88,42 @@ export const ImagApiPanel = observer(({ store }) => {
     setError(null);
   };
 
-  const addToCanvasCenter = async (item) => {
+  const addToCanvasCenter = (item) => {
     const fullSrc = item.full || item.thumbnail;
     if (!fullSrc) return;
 
-    // Use store.waitLoading if you want to show a global loader, 
-    // but for simple adding, we calculate dimensions:
     const canvasWidth = store.width;
     const canvasHeight = store.height;
-    
-    // Default size to 50% of canvas or a fixed value
-    const width = canvasWidth * 0.5;
+    const maxSize = Math.min(canvasWidth * 0.8, canvasHeight * 0.8);
+    const centerX = (canvasWidth - maxSize) / 2;
+    const centerY = (canvasHeight - maxSize) / 2;
 
     store.activePage.addElement({
       type: 'image',
       src: fullSrc,
-      x: (canvasWidth - width) / 2,
-      y: (canvasHeight - width) / 2,
-      width: width,
+      x: centerX,
+      y: centerY,
+      width: maxSize,
+      height: maxSize,
+      keepRatio: true,
       name: 'added-from-imagapi'
     });
   };
 
   const setAsBackground = () => {
-    if (images.length === 0) return;
+    if (images.length === 0) {
+      setError('No images available');
+      return;
+    }
 
     const first = images[0].full || images[0].thumbnail;
 
-    // Polotno standard for setting background image on the first page
     store.pages[0].set({
-      background: first
+      backgroundImage: first,
+      backgroundSize: 'cover',
+      backgroundPosition: 'center',
+      backgroundRepeat: 'no-repeat',
+      backgroundColor: 'transparent',
     });
   };
 
@@ -122,20 +132,19 @@ export const ImagApiPanel = observer(({ store }) => {
       height: '100%',
       display: 'flex',
       flexDirection: 'column',
-      padding: '12px',
+      padding: 12,
     }}>
       <HTMLSelect
         fill
         large
         value={assetType}
         onChange={e => {
-          const newType = e.target.value;
-          setAssetType(newType);
-          const def = ASSET_TYPES.find(t => t.value === newType)?.defaultQuery || '';
+          setAssetType(e.target.value);
+          const def = ASSET_TYPES.find(t => t.value === e.target.value)?.defaultQuery || '';
           setQuery(def);
           setImages([]);
         }}
-        style={{ marginBottom: '12px' }}
+        style={{ marginBottom: 12 }}
       >
         {ASSET_TYPES.map(t => (
           <option key={t.value} value={t.value}>
@@ -152,52 +161,50 @@ export const ImagApiPanel = observer(({ store }) => {
         onChange={e => setQuery(e.target.value)}
         rightElement={
           query && (
-            <Button minimal icon="cross" onClick={clearResults} />
+            <Button minimal icon="cross" onClick={clearResults} small />
           )
         }
-        style={{ marginBottom: '12px' }}
+        style={{ marginBottom: 12 }}
       />
 
-      <div style={{ display: 'flex', gap: '10px', marginBottom: '16px' }}>
+      <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
         <Button
           intent="primary"
-          fill
-          icon="layer-outline"
+          small
           onClick={setAsBackground}
           disabled={images.length === 0 || loading}
         >
-          Use First as Background
+          Set First as Background
         </Button>
       </div>
 
       {loading && (
         <div style={{ textAlign: 'center', padding: '30px 0' }}>
-          <Spinner size={30} />
-          <div style={{ marginTop: '10px', fontSize: '12px', opacity: 0.7 }}>Searching...</div>
+          <Spinner size={40} />
+          <div style={{ marginTop: 10 }}>Loading assets...</div>
         </div>
       )}
 
       {error && (
-        <Callout intent="danger" style={{ marginBottom: '16px', fontSize: '12px' }}>
+        <Callout intent="danger" style={{ marginBottom: 16 }}>
           {error}
         </Callout>
       )}
 
       {!loading && !error && images.length === 0 && query.trim() && (
         <div style={{ textAlign: 'center', padding: '40px 0', color: '#888' }}>
-          No results found
+          No results found for "{query}"
         </div>
       )}
 
       <div style={{ flex: 1, overflowY: 'auto' }}>
         <ImagesGrid
-          // FIXED: Corrected template literal syntax
           key={`${assetType}-${query}`}
           images={images}
           getPreview={img => img.thumbnail}
+          rowsNumber={selectedType?.value === 'backgrounds' ? 4 : 6}
           isLoading={loading}
           onSelect={addToCanvasCenter}
-          rowsNumber={2} // Better for side panels than 4 or 6
         />
       </div>
     </div>
