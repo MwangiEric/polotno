@@ -29,6 +29,7 @@ const mySections = [
   ImagApiSection,               // Your custom Assets / image search
   BtchImgSection,               // Your custom Batch Images
   JsonViewerSection,            // Raw JSON viewer + Pillow export
+FreeIconsSection,
 ];
 
 export default function Editor() {
