@@ -4,6 +4,7 @@ import { InputGroup, HTMLSelect, Button, Spinner, Callout } from '@blueprintjs/c
 import { ImagesGrid } from 'polotno/side-panel/images-grid';
 import { SectionTab } from 'polotno/side-panel';
 import FaImages from '@meronex/icons/fa/FaImages';
+/* eslint-disable @next/next/no-img-element */
 
 const ASSET_TYPES = [
   { value: 'backgrounds',   label: 'Backgrounds',   defaultQuery: 'abstract gradient' },
@@ -75,7 +76,7 @@ export const ImagApiPanel = observer(({ store }) => {
       fetchAssets();
     }, 600);
     return () => clearTimeout(timer);
-  }, [fetchAssets]);
+  }, [fetchAssets], [query, setQuery]);
 
   const clearResults = () => {
     setQuery('');
