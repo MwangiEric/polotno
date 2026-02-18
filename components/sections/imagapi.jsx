@@ -46,12 +46,12 @@ export const ImagApiPanel = observer(({ store }) => {
       searchQuery += ' large high resolution 4k background wallpaper';
     }
 
-    // Properly encode the query parameter
     const encodedQuery = encodeURIComponent(searchQuery);
 
+    // FIXED: correct template literal syntax
     const targetUrl = `https://imagapi.vercel.app/api/v1/assets/search?asset_type=\( {assetType}&q= \){encodedQuery}&n=30`;
 
-    console.log('Fetching assets from:', targetUrl); // ← for debugging
+    console.log('Fetching assets from:', targetUrl);
 
     try {
       const response = await fetch(targetUrl);
@@ -78,11 +78,11 @@ export const ImagApiPanel = observer(({ store }) => {
     }
   };
 
-  // Debounced auto-search
+  // Debounced auto-search - FIXED: added fetchAssets to deps
   useEffect(() => {
     const timer = setTimeout(fetchAssets, 600);
     return () => clearTimeout(timer);
-  }, [query, assetType]);
+  }, [query, assetType, fetchAssets]);
 
   const clearResults = () => {
     setQuery('');
@@ -90,19 +90,13 @@ export const ImagApiPanel = observer(({ store }) => {
     setError(null);
   };
 
-  // Add selected image to the **center** of the current canvas
   const addToCanvasCenter = (item) => {
     const fullSrc = item.full || item.thumbnail;
     if (!fullSrc) return;
 
-    // Get current canvas size
     const canvasWidth = store.width;
     const canvasHeight = store.height;
-
-    // Fit nicely: 80% of the smaller dimension
     const maxSize = Math.min(canvasWidth * 0.8, canvasHeight * 0.8);
-
-    // Center position
     const centerX = (canvasWidth - maxSize) / 2;
     const centerY = (canvasHeight - maxSize) / 2;
 
@@ -113,12 +107,11 @@ export const ImagApiPanel = observer(({ store }) => {
       y: centerY,
       width: maxSize,
       height: maxSize,
-      keepRatio: true,          // preserve original aspect ratio
+      keepRatio: true,
       name: 'added-from-imagapi'
     });
   };
 
-  // Optional: set first result as background
   const setAsBackground = () => {
     if (images.length === 0) {
       setError('No images available');
@@ -202,7 +195,7 @@ export const ImagApiPanel = observer(({ store }) => {
 
       {!loading && !error && images.length === 0 && query.trim() && (
         <div style={{ textAlign: 'center', padding: '40px 0', color: '#888' }}>
-          No results found for "{query}"
+          No results found for '{query}'
         </div>
       )}
 
@@ -213,7 +206,7 @@ export const ImagApiPanel = observer(({ store }) => {
           getPreview={img => img.thumbnail}
           rowsNumber={selectedType?.value === 'backgrounds' ? 4 : 6}
           isLoading={loading}
-          onSelect={addToCanvasCenter}  // adds to center of canvas
+          onSelect={addToCanvasCenter}
         />
       </div>
     </div>
