@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { observer } from 'mobx-react-lite';
 import { SectionTab } from 'polotno/side-panel';
-import { InputGroup, ButtonGroup, Button, NumericInput, Colors } from '@blueprintjs/core';
+import { InputGroup, HTMLSelect, ButtonGroup, Button, NumericInput, Colors } from '@blueprintjs/core';
 
 // List of \~100 free Phosphor icon names (MIT license, public CDN)
 const FREE_ICONS = [
@@ -167,7 +167,7 @@ export const FreeIconsPanel = observer(({ store }) => {
 
         {filteredIcons.length === 0 && search && (
           <div style={{ textAlign: 'center', padding: 40, color: '#888' }}>
-            No icons found for "{search}"
+            No icons found for '{search}'
           </div>
         )}
       </div>
