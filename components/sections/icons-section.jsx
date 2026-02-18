@@ -14,6 +14,8 @@ import FaVectorSquare from '@meronex/icons/fa/FaVectorSquare';
 
 import { ImagesGrid } from 'polotno/side-panel/images-grid';
 
+/* eslint-disable @next/next/no-img-element */
+
 const API = 'https://api.polotno.dev/api';
 // const API = 'http://localhost:3001/api';
 
@@ -51,7 +53,7 @@ export const NounprojectPanel = observer(({ store, query }) => {
 
   React.useEffect(() => {
     setQuery(query);
-  }, [query]);
+  }, [query, setQuery]);
 
   return (
     <NounContainer style={{ background: 'black', filter: 'invert(1)' }}>
@@ -102,7 +104,7 @@ export const FlatIconPanel = observer(({ store, query }) => {
 
   React.useEffect(() => {
     setQuery(query);
-  }, [query]);
+  }, [query, setQuery]);
 
   return (
     <ImagesGrid
@@ -162,7 +164,7 @@ export const IconFinderPanel = observer(({ store, query }) => {
 
   React.useEffect(() => {
     setQuery(query);
-  }, [query]);
+  }, [query, setQuery]);
 
   return (
     <ImagesGrid
@@ -224,7 +226,7 @@ export const IconsPanel = ({ store }) => {
     return () => {
       clearTimeout(requestTimeout.current);
     };
-  }, [query]);
+  }, [query, setQuery]);
 
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
