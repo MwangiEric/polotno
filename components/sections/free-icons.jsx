@@ -1,11 +1,8 @@
-// components/sections/free-icons.jsx
-
 import React, { useState } from 'react';
 import { observer } from 'mobx-react-lite';
 import { SectionTab } from 'polotno/side-panel';
-import { InputGroup, HTMLSelect, ButtonGroup, Button, NumericInput, Colors } from '@blueprintjs/core';
+import { InputGroup, ButtonGroup, Button, NumericInput, Colors } from '@blueprintjs/core';
 
-// List of \~100 free Phosphor icon names (MIT license, public CDN)
 const FREE_ICONS = [
   'house', 'house-line', 'star', 'star-fill', 'heart', 'heart-fill', 'user', 'user-circle', 
   'users', 'shopping-cart', 'shopping-bag', 'camera', 'camera-rotate', 'envelope', 'envelope-open',
@@ -21,7 +18,6 @@ const FREE_ICONS = [
   'cloud-rain', 'lightning', 'thermometer', 'drop', 'drop-half', 'leaf', 'tree', 'flower',
   'paw-print', 'dog', 'cat', 'bird', 'fish', 'mountains', 'wave', 'wave-saw', 'circles-three',
   'cube', 'cube-transparent', 'square', 'circle', 'triangle', 'hexagon', 'pentagon', 'star-four-points'
-  // You can easily add 100–200 more from https://phosphoricons.com
 ];
 
 export const FreeIconsPanel = observer(({ store }) => {
@@ -30,94 +26,99 @@ export const FreeIconsPanel = observer(({ store }) => {
   const [customSize, setCustomSize] = useState(128);
   const [color, setColor] = useState('#000000');
 
-  // Simple real-time filter
   const lowerSearch = search.toLowerCase().trim();
   const filteredIcons = FREE_ICONS.filter(name => 
     name.toLowerCase().includes(lowerSearch)
   );
 
   const getSize = () => {
-    switch (sizePreset) {
-      case 'small': return 64;
-      case 'medium': return 128;
-      case 'large': return 256;
-      default: return customSize;
-    }
+    if (sizePreset === 'small') return 64;
+    if (sizePreset === 'medium') return 128;
+    if (sizePreset === 'large') return 256;
+    return customSize;
   };
 
-  const addIcon = (name) => {
+  const addIcon = async (name) => {
     const size = getSize();
     const url = `https://unpkg.com/@phosphor-icons/web@2.1.0/src/icons/${name}-bold.svg`;
 
-    store.activePage.addElement({
-      type: 'svg',
-      src: url,
-      x: store.width / 2 - size / 2,
-      y: store.height / 2 - size / 2,
-      width: size,
-      height: size,
-      keepRatio: true,
-      name: `icon-${name}`,
-      fill: color
-    });
+    try {
+      // To properly color an external SVG in Polotno, we fetch the SVG string
+      // and inject the fill color into the SVG tag.
+      const response = await fetch(url);
+      let svgText = await response.text();
+      
+      // Inject fill color and ensure it scales
+      svgText = svgText.replace('<svg', `<svg fill="${color}"`);
+
+      store.activePage.addElement({
+        type: 'svg',
+        content: svgText, // Using 'content' instead of 'src' for modified SVGs
+        x: store.width / 2 - size / 2,
+        y: store.height / 2 - size / 2,
+        width: size,
+        height: size,
+        keepRatio: true,
+        name: `icon-${name}`,
+      });
+    } catch (err) {
+      console.error('Failed to load icon:', err);
+    }
   };
 
   return (
-    <div style={{ height: '100%', padding: 16, display: 'flex', flexDirection: 'column' }}>
-      <h3>Free Icons Set</h3>
+    <div style={{ height: '100%', padding: '16px', display: 'flex', flexDirection: 'column' }}>
+      <h3 style={{ marginTop: 0 }}>Free Icons Set</h3>
 
-      {/* Search */}
       <InputGroup
         large
         leftIcon="search"
         placeholder='Search icons (house, heart, user...)'
         value={search}
         onChange={e => setSearch(e.target.value)}
-        style={{ marginBottom: 16 }}
+        style={{ marginBottom: '16px' }}
       />
 
-      {/* Size controls */}
-      <div style={{ marginBottom: 16 }}>
-        <label style={{ display: 'block', marginBottom: 6 }}>Size</label>
+      <div style={{ marginBottom: '16px' }}>
+        <label style={{ display: 'block', marginBottom: '6px', fontWeight: 'bold' }}>Size</label>
         <ButtonGroup fill>
-          <Button active={sizePreset === 'small'} onClick={() => setSizePreset('small')}>Small (64)</Button>
-          <Button active={sizePreset === 'medium'} onClick={() => setSizePreset('medium')}>Medium (128)</Button>
-          <Button active={sizePreset === 'large'} onClick={() => setSizePreset('large')}>Large (256)</Button>
+          <Button active={sizePreset === 'small'} onClick={() => setSizePreset('small')}>Small</Button>
+          <Button active={sizePreset === 'medium'} onClick={() => setSizePreset('medium')}>Med</Button>
+          <Button active={sizePreset === 'large'} onClick={() => setSizePreset('large')}>Large</Button>
+          <Button active={sizePreset === 'custom'} onClick={() => setSizePreset('custom')}>Custom</Button>
         </ButtonGroup>
 
-        <div style={{ marginTop: 12 }}>
-          <NumericInput
-            fill
-            value={customSize}
-            onValueChange={setCustomSize}
-            min={32}
-            max={512}
-            step={16}
-            majorStepSize={64}
-            leftIcon="widget-button"
-            rightElement={<Button minimal icon="refresh" onClick={() => setCustomSize(128)} />}
-          />
-        </div>
+        {sizePreset === 'custom' && (
+          <div style={{ marginTop: '12px' }}>
+            <NumericInput
+              fill
+              value={customSize}
+              onValueChange={setCustomSize}
+              min={32}
+              max={512}
+              step={16}
+              leftIcon="widget-button"
+            />
+          </div>
+        )}
       </div>
 
-      {/* Color picker (simple swatches + hex) */}
-      <div style={{ marginBottom: 16 }}>
-        <label style={{ display: 'block', marginBottom: 6 }}>Color</label>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
+      <div style={{ marginBottom: '16px' }}>
+        <label style={{ display: 'block', marginBottom: '6px', fontWeight: 'bold' }}>Color</label>
+        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '8px' }}>
           {[
             Colors.BLUE3, Colors.GREEN3, Colors.RED3, Colors.ORANGE3, Colors.VIOLET3,
-            Colors.DARK_GRAY5, Colors.BLACK, Colors.WHITE, Colors.GRAY3
+            Colors.BLACK, Colors.GRAY3, '#5C7080'
           ].map(c => (
             <div
               key={c}
               style={{
-                width: 32,
-                height: 32,
+                width: 28,
+                height: 28,
                 backgroundColor: c,
-                border: color === c ? '3px solid #fff' : '1px solid #ddd',
-                borderRadius: 6,
+                border: color === c ? '2px solid #333' : '1px solid #ddd',
+                borderRadius: '50%',
                 cursor: 'pointer',
-                boxShadow: color === c ? '0 0 0 3px rgba(0,0,0,0.2)' : 'none'
               }}
               onClick={() => setColor(c)}
             />
@@ -127,47 +128,49 @@ export const FreeIconsPanel = observer(({ store }) => {
           value={color}
           onChange={e => setColor(e.target.value)}
           placeholder="#000000"
-          leftElement={<div style={{ background: color, width: 20, height: 20, borderRadius: 4, margin: 6 }} />}
+          leftElement={<div style={{ background: color, width: 16, height: 16, borderRadius: 2, margin: 8, border: '1px solid #ddd' }} />}
         />
       </div>
 
-      {/* Icons grid */}
-      <div style={{ flex: 1, overflowY: 'auto' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(90px, 1fr))', gap: 12 }}>
+      <div style={{ flex: 1, overflowY: 'auto', paddingRight: '4px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(80px, 1fr))', gap: '8px' }}>
           {filteredIcons.map(name => (
             <div
               key={name}
               style={{
                 textAlign: 'center',
                 cursor: 'pointer',
-                padding: 8,
-                borderRadius: 8,
+                padding: '12px 8px',
+                borderRadius: '8px',
                 background: '#f8f9fa',
-                transition: 'all 0.15s'
+                border: '1px solid #ececec',
+                transition: 'background 0.2s'
               }}
               onClick={() => addIcon(name)}
-              onMouseEnter={e => e.currentTarget.style.background = '#e0f0ff'}
+              onMouseEnter={e => e.currentTarget.style.background = '#eef4ff'}
               onMouseLeave={e => e.currentTarget.style.background = '#f8f9fa'}
             >
               <img
                 src={`https://unpkg.com/@phosphor-icons/web@2.1.0/src/icons/${name}-bold.svg`}
                 alt={name}
                 style={{ 
-                  width: 48, 
-                  height: 48,
-                  filter: color !== '#000000' ? `hue-rotate(${getHue(color)}deg) saturate(200%)` : 'none'
+                  width: 32, 
+                  height: 32,
+                  // CSS filter for preview only
+                  filter: color !== '#000000' ? 'invert(100%)' : 'none',
+                  opacity: 0.8
                 }}
               />
-              <div style={{ fontSize: 11, marginTop: 6, color: '#555' }}>
-                {name.replace(/-/g, ' ')}
+              <div style={{ fontSize: '10px', marginTop: '8px', color: '#5C7080', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {name}
               </div>
             </div>
           ))}
         </div>
 
-        {filteredIcons.length === 0 && search && (
-          <div style={{ textAlign: 'center', padding: 40, color: '#888' }}>
-            No icons found for '{search}'
+        {filteredIcons.length === 0 && (
+          <div style={{ textAlign: 'center', padding: '20px', color: Colors.GRAY3 }}>
+            No icons found
           </div>
         )}
       </div>
@@ -175,31 +178,15 @@ export const FreeIconsPanel = observer(({ store }) => {
   );
 });
 
-// Simple hue approximation for tinting (no extra libs)
-function getHue(hex) {
-  if (!hex || hex.length < 7) return 0;
-  const r = parseInt(hex.slice(1,3), 16);
-  const g = parseInt(hex.slice(3,5), 16);
-  const b = parseInt(hex.slice(5,7), 16);
-  const max = Math.max(r,g,b), min = Math.min(r,g,b);
-  let h = 0;
-  if (max === min) return 0;
-  const d = max - min;
-  switch (max) {
-    case r: h = (g - b) / d + (g < b ? 6 : 0); break;
-    case g: h = (b - r) / d + 2; break;
-    case b: h = (r - g) / d + 4; break;
-  }
-  return Math.round(h * 60);
-}
-
 export const FreeIconsSection = {
   name: 'free-icons',
   Tab: (props) => (
-    <SectionTab name="Icons Set" {...props}>
+    <SectionTab name="Icons" {...props}>
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-        <circle cx="12" cy="12" r="10" />
-        <path d="M12 8v8M8 12h8" />
+        <rect x="3" y="3" width="7" height="7" />
+        <rect x="14" y="3" width="7" height="7" />
+        <rect x="14" y="14" width="7" height="7" />
+        <rect x="3" y="14" width="7" height="7" />
       </svg>
     </SectionTab>
   ),
