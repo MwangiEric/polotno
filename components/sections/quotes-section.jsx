@@ -41,7 +41,7 @@ export const QuotesPanel = observer(({ store }) => {
 
   React.useEffect(() => {
     store.loadFont('Atma');
-  }, []);
+  }, [store]);
 
   const timeout = React.useRef();
   const requestQuery = (query) => {
