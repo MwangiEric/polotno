@@ -5,39 +5,37 @@ import { observer } from 'mobx-react-lite';
 import { SectionTab } from 'polotno/side-panel';
 import { InputGroup, ButtonGroup, Button, NumericInput, Colors } from '@blueprintjs/core';
 
-// Popular Phosphor icon names (expand this list as needed)
-const ICON_NAMES = [
-  'house', 'star', 'heart', 'user', 'shopping-cart', 'camera', 'envelope', 'phone', 'map-pin', 'calendar',
-  'clock', 'tag', 'truck', 'gift', 'award', 'shield-check', 'thumbs-up', 'sparkle', 'rocket', 'lightbulb',
-  'warning', 'info', 'check-circle', 'x-circle', 'arrow-right', 'arrow-left', 'download', 'upload', 'trash',
-  'pencil', 'eye', 'eye-slash', 'gear', 'bell', 'bookmark', 'book', 'music-note', 'video', 'image',
-  'chart-bar', 'chart-line', 'wallet', 'credit-card', 'bank', 'airplane', 'car', 'train', 'bus',
-  'wifi-high', 'battery-full', 'moon', 'sun', 'cloud', 'lightning', 'thermometer', 'drop', 'leaf',
-  'flower', 'paw-print', 'dog', 'cat', 'bird', 'fish', 'tree', 'mountains', 'wave', 'wave-saw'
-  // Add 50–100 more from https://phosphoricons.com if you want
-];
-
-const ICON_SETS = [
-  { value: 'phosphor', label: 'Phosphor Icons', baseUrl: 'https://unpkg.com/@phosphor-icons/web@2.1.0/src/icons/' },
-  { value: 'lucide', label: 'Lucide Icons', baseUrl: 'https://unpkg.com/lucide-static@latest/icons/' }
+// List of \~100 free Phosphor icon names (MIT license, public CDN)
+const FREE_ICONS = [
+  'house', 'house-line', 'star', 'star-fill', 'heart', 'heart-fill', 'user', 'user-circle', 
+  'users', 'shopping-cart', 'shopping-bag', 'camera', 'camera-rotate', 'envelope', 'envelope-open',
+  'phone', 'phone-call', 'map-pin', 'map-pin-area', 'calendar', 'calendar-blank', 'clock', 'clock-afternoon',
+  'tag', 'tag-simple', 'truck', 'gift', 'award', 'medal', 'shield-check', 'shield-checkered',
+  'thumbs-up', 'thumbs-down', 'sparkle', 'rocket', 'lightbulb', 'lightbulb-filament', 'warning', 'warning-circle',
+  'info', 'info-circle', 'check-circle', 'x-circle', 'arrow-right', 'arrow-left', 'arrow-up', 'arrow-down',
+  'arrow-fat-right', 'download', 'upload', 'trash', 'trash-simple', 'pencil', 'pencil-simple', 'eye', 'eye-slash',
+  'gear', 'gear-six', 'bell', 'bell-ringing', 'bookmark', 'bookmark-simple', 'book', 'book-open',
+  'music-note', 'music-notes', 'video', 'video-camera', 'image', 'images', 'chart-bar', 'chart-line',
+  'wallet', 'credit-card', 'bank', 'airplane', 'car', 'car-profile', 'train', 'bus',
+  'wifi-high', 'wifi-low', 'battery-full', 'battery-warning', 'moon', 'sun', 'sun-horizon', 'cloud',
+  'cloud-rain', 'lightning', 'thermometer', 'drop', 'drop-half', 'leaf', 'tree', 'flower',
+  'paw-print', 'dog', 'cat', 'bird', 'fish', 'mountains', 'wave', 'wave-saw', 'circles-three',
+  'cube', 'cube-transparent', 'square', 'circle', 'triangle', 'hexagon', 'pentagon', 'star-four-points'
+  // You can easily add 100–200 more from https://phosphoricons.com
 ];
 
 export const FreeIconsPanel = observer(({ store }) => {
-  const [setId, setSetId] = useState('phosphor');
   const [search, setSearch] = useState('');
   const [sizePreset, setSizePreset] = useState('medium');
   const [customSize, setCustomSize] = useState(128);
   const [color, setColor] = useState('#000000');
 
-  const currentSet = ICON_SETS.find(s => s.value === setId);
-
   // Simple real-time filter
   const lowerSearch = search.toLowerCase().trim();
-  const filteredIcons = ICON_NAMES.filter(name => 
+  const filteredIcons = FREE_ICONS.filter(name => 
     name.toLowerCase().includes(lowerSearch)
   );
 
-  // Size logic
   const getSize = () => {
     switch (sizePreset) {
       case 'small': return 64;
@@ -49,7 +47,7 @@ export const FreeIconsPanel = observer(({ store }) => {
 
   const addIcon = (name) => {
     const size = getSize();
-    const url = `\( {currentSet.baseUrl} \){name}.svg`; // Phosphor regular style (add -bold etc. if wanted)
+    const url = `https://unpkg.com/@phosphor-icons/web@2.1.0/src/icons/${name}-bold.svg`;
 
     store.activePage.addElement({
       type: 'svg',
@@ -60,29 +58,19 @@ export const FreeIconsPanel = observer(({ store }) => {
       height: size,
       keepRatio: true,
       name: `icon-${name}`,
-      fill: color // Applies tint (works best with monochrome icons)
+      fill: color
     });
   };
 
   return (
     <div style={{ height: '100%', padding: 16, display: 'flex', flexDirection: 'column' }}>
-      <h3>Icons Set</h3>
-
-      {/* Set selector */}
-      <HTMLSelect
-        fill
-        value={setId}
-        onChange={e => setSetId(e.target.value)}
-        style={{ marginBottom: 12 }}
-      >
-        {ICON_SETS.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
-      </HTMLSelect>
+      <h3>Free Icons Set</h3>
 
       {/* Search */}
       <InputGroup
         large
         leftIcon="search"
-        placeholder="Search icons (house, heart, user...)"
+        placeholder='Search icons (house, heart, user...)'
         value={search}
         onChange={e => setSearch(e.target.value)}
         style={{ marginBottom: 16 }}
@@ -90,34 +78,32 @@ export const FreeIconsPanel = observer(({ store }) => {
 
       {/* Size controls */}
       <div style={{ marginBottom: 16 }}>
-        <label style={{ display: 'block', marginBottom: 6 }}>Icon Size</label>
+        <label style={{ display: 'block', marginBottom: 6 }}>Size</label>
         <ButtonGroup fill>
-          <Button active={sizePreset === 'small'} onClick={() => setSizePreset('small')}>Small (64px)</Button>
-          <Button active={sizePreset === 'medium'} onClick={() => setSizePreset('medium')}>Medium (128px)</Button>
-          <Button active={sizePreset === 'large'} onClick={() => setSizePreset('large')}>Large (256px)</Button>
+          <Button active={sizePreset === 'small'} onClick={() => setSizePreset('small')}>Small (64)</Button>
+          <Button active={sizePreset === 'medium'} onClick={() => setSizePreset('medium')}>Medium (128)</Button>
+          <Button active={sizePreset === 'large'} onClick={() => setSizePreset('large')}>Large (256)</Button>
         </ButtonGroup>
 
-        {sizePreset === 'custom' && (
-          <div style={{ marginTop: 12 }}>
-            <NumericInput
-              fill
-              value={customSize}
-              onValueChange={setCustomSize}
-              min={32}
-              max={512}
-              step={16}
-              majorStepSize={64}
-              leftIcon="widget-button"
-              rightElement={<Button minimal icon="refresh" onClick={() => setCustomSize(128)} />}
-            />
-          </div>
-        )}
+        <div style={{ marginTop: 12 }}>
+          <NumericInput
+            fill
+            value={customSize}
+            onValueChange={setCustomSize}
+            min={32}
+            max={512}
+            step={16}
+            majorStepSize={64}
+            leftIcon="widget-button"
+            rightElement={<Button minimal icon="refresh" onClick={() => setCustomSize(128)} />}
+          />
+        </div>
       </div>
 
-      {/* Color picker (Blueprint built-in swatches + hex input) */}
+      {/* Color picker (simple swatches + hex) */}
       <div style={{ marginBottom: 16 }}>
-        <label style={{ display: 'block', marginBottom: 6 }}>Icon Color</label>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <label style={{ display: 'block', marginBottom: 6 }}>Color</label>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
           {[
             Colors.BLUE3, Colors.GREEN3, Colors.RED3, Colors.ORANGE3, Colors.VIOLET3,
             Colors.DARK_GRAY5, Colors.BLACK, Colors.WHITE, Colors.GRAY3
@@ -141,7 +127,6 @@ export const FreeIconsPanel = observer(({ store }) => {
           value={color}
           onChange={e => setColor(e.target.value)}
           placeholder="#000000"
-          style={{ marginTop: 12 }}
           leftElement={<div style={{ background: color, width: 20, height: 20, borderRadius: 4, margin: 6 }} />}
         />
       </div>
@@ -165,7 +150,7 @@ export const FreeIconsPanel = observer(({ store }) => {
               onMouseLeave={e => e.currentTarget.style.background = '#f8f9fa'}
             >
               <img
-                src={`\( {currentSet.baseUrl} \){name}.svg`}
+                src={`https://unpkg.com/@phosphor-icons/web@2.1.0/src/icons/${name}-bold.svg`}
                 alt={name}
                 style={{ 
                   width: 48, 
@@ -190,7 +175,7 @@ export const FreeIconsPanel = observer(({ store }) => {
   );
 });
 
-// Very simple hue approximation for tinting (not perfect, but no extra libs)
+// Simple hue approximation for tinting (no extra libs)
 function getHue(hex) {
   if (!hex || hex.length < 7) return 0;
   const r = parseInt(hex.slice(1,3), 16);
