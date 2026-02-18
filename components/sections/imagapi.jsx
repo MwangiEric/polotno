@@ -1,6 +1,4 @@
-// components/sections/imagapi.jsx
-
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { observer } from 'mobx-react-lite';
 import { InputGroup, HTMLSelect, Button, Spinner, Callout } from '@blueprintjs/core';
 import { ImagesGrid } from 'polotno/side-panel/images-grid';
@@ -27,31 +25,25 @@ export const ImagApiPanel = observer(({ store }) => {
 
   const selectedType = ASSET_TYPES.find(t => t.value === assetType);
 
-  const fetchAssets = async () => {
+  const fetchAssets = useCallback(async () => {
     const safeQuery = (query || '').trim();
 
+    // Prevent API calls for very short queries
     if (!safeQuery || safeQuery.length < 2) {
-      setImages([]);
-      setLoading(false);
-      setError(null);
       return;
     }
 
     setLoading(true);
     setError(null);
-    setImages([]);
 
     let searchQuery = safeQuery;
     if (assetType === 'backgrounds') {
-      searchQuery += ' large high resolution 4k background wallpaper';
+      searchQuery += ' high resolution background';
     }
 
     const encodedQuery = encodeURIComponent(searchQuery);
-
-    // FIXED: correct template literal syntax
-    const targetUrl = `https://imagapi.vercel.app/api/v1/assets/search?asset_type=\( {assetType}&q= \){encodedQuery}&n=30`;
-
-    console.log('Fetching assets from:', targetUrl);
+    // FIXED: Corrected template literal syntax from \( \) to ${ }
+    const targetUrl = `https://imagapi.vercel.app/api/v1/assets/search?asset_type=${assetType}&q=${encodedQuery}&n=30`;
 
     try {
       const response = await fetch(targetUrl);
@@ -72,17 +64,18 @@ export const ImagApiPanel = observer(({ store }) => {
       }
     } catch (err) {
       setError(err.message || 'Failed to load assets');
-      console.error('Fetch error:', err, 'URL was:', targetUrl);
+      console.error('Fetch error:', err);
     } finally {
       setLoading(false);
     }
-  };
+  }, [query, assetType, selectedType]);
 
-  // Debounced auto-search - FIXED: added fetchAssets to deps
   useEffect(() => {
-    const timer = setTimeout(fetchAssets, 600);
+    const timer = setTimeout(() => {
+      fetchAssets();
+    }, 600);
     return () => clearTimeout(timer);
-  }, [query, assetType, fetchAssets]);
+  }, [fetchAssets]);
 
   const clearResults = () => {
     setQuery('');
@@ -90,42 +83,36 @@ export const ImagApiPanel = observer(({ store }) => {
     setError(null);
   };
 
-  const addToCanvasCenter = (item) => {
+  const addToCanvasCenter = async (item) => {
     const fullSrc = item.full || item.thumbnail;
     if (!fullSrc) return;
 
+    // Use store.waitLoading if you want to show a global loader, 
+    // but for simple adding, we calculate dimensions:
     const canvasWidth = store.width;
     const canvasHeight = store.height;
-    const maxSize = Math.min(canvasWidth * 0.8, canvasHeight * 0.8);
-    const centerX = (canvasWidth - maxSize) / 2;
-    const centerY = (canvasHeight - maxSize) / 2;
+    
+    // Default size to 50% of canvas or a fixed value
+    const width = canvasWidth * 0.5;
 
     store.activePage.addElement({
       type: 'image',
       src: fullSrc,
-      x: centerX,
-      y: centerY,
-      width: maxSize,
-      height: maxSize,
-      keepRatio: true,
+      x: (canvasWidth - width) / 2,
+      y: (canvasHeight - width) / 2,
+      width: width,
       name: 'added-from-imagapi'
     });
   };
 
   const setAsBackground = () => {
-    if (images.length === 0) {
-      setError('No images available');
-      return;
-    }
+    if (images.length === 0) return;
 
     const first = images[0].full || images[0].thumbnail;
 
+    // Polotno standard for setting background image on the first page
     store.pages[0].set({
-      backgroundImage: first,
-      backgroundSize: 'cover',
-      backgroundPosition: 'center',
-      backgroundRepeat: 'no-repeat',
-      backgroundColor: 'transparent',
+      background: first
     });
   };
 
@@ -134,19 +121,20 @@ export const ImagApiPanel = observer(({ store }) => {
       height: '100%',
       display: 'flex',
       flexDirection: 'column',
-      padding: 12,
+      padding: '12px',
     }}>
       <HTMLSelect
         fill
         large
         value={assetType}
         onChange={e => {
-          setAssetType(e.target.value);
-          const def = ASSET_TYPES.find(t => t.value === e.target.value)?.defaultQuery || '';
+          const newType = e.target.value;
+          setAssetType(newType);
+          const def = ASSET_TYPES.find(t => t.value === newType)?.defaultQuery || '';
           setQuery(def);
           setImages([]);
         }}
-        style={{ marginBottom: 12 }}
+        style={{ marginBottom: '12px' }}
       >
         {ASSET_TYPES.map(t => (
           <option key={t.value} value={t.value}>
@@ -163,50 +151,52 @@ export const ImagApiPanel = observer(({ store }) => {
         onChange={e => setQuery(e.target.value)}
         rightElement={
           query && (
-            <Button minimal icon="cross" onClick={clearResults} small />
+            <Button minimal icon="cross" onClick={clearResults} />
           )
         }
-        style={{ marginBottom: 12 }}
+        style={{ marginBottom: '12px' }}
       />
 
-      <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', gap: '10px', marginBottom: '16px' }}>
         <Button
           intent="primary"
-          small
+          fill
+          icon="layer-outline"
           onClick={setAsBackground}
           disabled={images.length === 0 || loading}
         >
-          Set First as Background
+          Use First as Background
         </Button>
       </div>
 
       {loading && (
         <div style={{ textAlign: 'center', padding: '30px 0' }}>
-          <Spinner size={40} />
-          <div style={{ marginTop: 10 }}>Loading assets...</div>
+          <Spinner size={30} />
+          <div style={{ marginTop: '10px', fontSize: '12px', opacity: 0.7 }}>Searching...</div>
         </div>
       )}
 
       {error && (
-        <Callout intent="danger" style={{ marginBottom: 16 }}>
+        <Callout intent="danger" style={{ marginBottom: '16px', fontSize: '12px' }}>
           {error}
         </Callout>
       )}
 
       {!loading && !error && images.length === 0 && query.trim() && (
         <div style={{ textAlign: 'center', padding: '40px 0', color: '#888' }}>
-          No results found for '{query}'
+          No results found for "{query}"
         </div>
       )}
 
       <div style={{ flex: 1, overflowY: 'auto' }}>
         <ImagesGrid
-          key={`\( {assetType}- \){query}`}
+          // FIXED: Corrected template literal syntax
+          key={`${assetType}-${query}`}
           images={images}
           getPreview={img => img.thumbnail}
-          rowsNumber={selectedType?.value === 'backgrounds' ? 4 : 6}
           isLoading={loading}
           onSelect={addToCanvasCenter}
+          rowsNumber={2} // Better for side panels than 4 or 6
         />
       </div>
     </div>
