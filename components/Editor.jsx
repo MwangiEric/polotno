@@ -35,6 +35,7 @@ const mySections = [
   JsonViewerSection,            // JSON viewer + export
   FreeIconsSection,             // Your free icons tab
   PexelsSection,                // ← NEW: Pexels free stock photos
+  RealEstateSection,
 ];
 
 export default function Editor() {
