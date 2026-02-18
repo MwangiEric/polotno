@@ -1,8 +1,14 @@
+// components/sections/free-icons.jsx
+
 import React, { useState } from 'react';
 import { observer } from 'mobx-react-lite';
 import { SectionTab } from 'polotno/side-panel';
-import { InputGroup, ButtonGroup, Button, NumericInput, Colors } from '@blueprintjs/core';
+import { InputGroup, HTMLSelect, ButtonGroup, Button, NumericInput, Colors } from '@blueprintjs/core';
 
+// Suppress Next.js <img> warnings for dynamic CDN icons
+/* eslint-disable @next/next/no-img-element */
+
+// ~100 free Phosphor icons (MIT license, public CDN)
 const FREE_ICONS = [
   'house', 'house-line', 'star', 'star-fill', 'heart', 'heart-fill', 'user', 'user-circle', 
   'users', 'shopping-cart', 'shopping-bag', 'camera', 'camera-rotate', 'envelope', 'envelope-open',
@@ -32,10 +38,12 @@ export const FreeIconsPanel = observer(({ store }) => {
   );
 
   const getSize = () => {
-    if (sizePreset === 'small') return 64;
-    if (sizePreset === 'medium') return 128;
-    if (sizePreset === 'large') return 256;
-    return customSize;
+    switch (sizePreset) {
+      case 'small': return 64;
+      case 'medium': return 128;
+      case 'large': return 256;
+      default: return customSize;
+    }
   };
 
   const addIcon = async (name) => {
@@ -43,17 +51,16 @@ export const FreeIconsPanel = observer(({ store }) => {
     const url = `https://unpkg.com/@phosphor-icons/web@2.1.0/src/icons/${name}-bold.svg`;
 
     try {
-      // To properly color an external SVG in Polotno, we fetch the SVG string
-      // and inject the fill color into the SVG tag.
       const response = await fetch(url);
-      let svgText = await response.text();
+      if (!response.ok) throw new Error('Failed to fetch SVG');
       
-      // Inject fill color and ensure it scales
+      let svgText = await response.text();
+      // Inject fill color directly into SVG
       svgText = svgText.replace('<svg', `<svg fill="${color}"`);
 
       store.activePage.addElement({
         type: 'svg',
-        content: svgText, // Using 'content' instead of 'src' for modified SVGs
+        content: svgText, // Use 'content' for inline SVG with custom fill
         x: store.width / 2 - size / 2,
         y: store.height / 2 - size / 2,
         width: size,
@@ -62,13 +69,13 @@ export const FreeIconsPanel = observer(({ store }) => {
         name: `icon-${name}`,
       });
     } catch (err) {
-      console.error('Failed to load icon:', err);
+      console.error('Failed to add icon:', err);
     }
   };
 
   return (
-    <div style={{ height: '100%', padding: '16px', display: 'flex', flexDirection: 'column' }}>
-      <h3 style={{ marginTop: 0 }}>Free Icons Set</h3>
+    <div style={{ height: '100%', padding: 16, display: 'flex', flexDirection: 'column' }}>
+      <h3>Free Icons Set</h3>
 
       <InputGroup
         large
@@ -76,36 +83,35 @@ export const FreeIconsPanel = observer(({ store }) => {
         placeholder='Search icons (house, heart, user...)'
         value={search}
         onChange={e => setSearch(e.target.value)}
-        style={{ marginBottom: '16px' }}
+        style={{ marginBottom: 16 }}
       />
 
-      <div style={{ marginBottom: '16px' }}>
-        <label style={{ display: 'block', marginBottom: '6px', fontWeight: 'bold' }}>Size</label>
+      <div style={{ marginBottom: 16 }}>
+        <label style={{ display: 'block', marginBottom: 6 }}>Size</label>
         <ButtonGroup fill>
-          <Button active={sizePreset === 'small'} onClick={() => setSizePreset('small')}>Small</Button>
-          <Button active={sizePreset === 'medium'} onClick={() => setSizePreset('medium')}>Med</Button>
-          <Button active={sizePreset === 'large'} onClick={() => setSizePreset('large')}>Large</Button>
-          <Button active={sizePreset === 'custom'} onClick={() => setSizePreset('custom')}>Custom</Button>
+          <Button active={sizePreset === 'small'} onClick={() => setSizePreset('small')}>Small (64)</Button>
+          <Button active={sizePreset === 'medium'} onClick={() => setSizePreset('medium')}>Medium (128)</Button>
+          <Button active={sizePreset === 'large'} onClick={() => setSizePreset('large')}>Large (256)</Button>
         </ButtonGroup>
 
-        {sizePreset === 'custom' && (
-          <div style={{ marginTop: '12px' }}>
-            <NumericInput
-              fill
-              value={customSize}
-              onValueChange={setCustomSize}
-              min={32}
-              max={512}
-              step={16}
-              leftIcon="widget-button"
-            />
-          </div>
-        )}
+        <div style={{ marginTop: 12 }}>
+          <NumericInput
+            fill
+            value={customSize}
+            onValueChange={setCustomSize}
+            min={32}
+            max={512}
+            step={16}
+            majorStepSize={64}
+            leftIcon="widget-button"
+            rightElement={<Button minimal icon="refresh" onClick={() => setCustomSize(128)} />}
+          />
+        </div>
       </div>
 
-      <div style={{ marginBottom: '16px' }}>
-        <label style={{ display: 'block', marginBottom: '6px', fontWeight: 'bold' }}>Color</label>
-        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '8px' }}>
+      <div style={{ marginBottom: 16 }}>
+        <label style={{ display: 'block', marginBottom: 6 }}>Color</label>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
           {[
             Colors.BLUE3, Colors.GREEN3, Colors.RED3, Colors.ORANGE3, Colors.VIOLET3,
             Colors.BLACK, Colors.GRAY3, '#5C7080'
@@ -132,8 +138,8 @@ export const FreeIconsPanel = observer(({ store }) => {
         />
       </div>
 
-      <div style={{ flex: 1, overflowY: 'auto', paddingRight: '4px' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(80px, 1fr))', gap: '8px' }}>
+      <div style={{ flex: 1, overflowY: 'auto', paddingRight: 4 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(80px, 1fr))', gap: 8 }}>
           {filteredIcons.map(name => (
             <div
               key={name}
@@ -156,7 +162,6 @@ export const FreeIconsPanel = observer(({ store }) => {
                 style={{ 
                   width: 32, 
                   height: 32,
-                  // CSS filter for preview only
                   filter: color !== '#000000' ? 'invert(100%)' : 'none',
                   opacity: 0.8
                 }}
@@ -168,9 +173,9 @@ export const FreeIconsPanel = observer(({ store }) => {
           ))}
         </div>
 
-        {filteredIcons.length === 0 && (
+        {filteredIcons.length === 0 && search && (
           <div style={{ textAlign: 'center', padding: '20px', color: Colors.GRAY3 }}>
-            No icons found
+            No icons found for "{search}"
           </div>
         )}
       </div>
