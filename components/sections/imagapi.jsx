@@ -193,7 +193,7 @@ export const ImagApiPanel = observer(({ store }) => {
 
       {!loading && !error && images.length === 0 && query.trim() && (
         <div style={{ textAlign: 'center', padding: '40px 0', color: '#888' }}>
-          No results found for "{query}"
+          No results found
         </div>
       )}
 
