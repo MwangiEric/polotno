@@ -3,12 +3,12 @@
 import React, { useState } from 'react';
 import { observer } from 'mobx-react-lite';
 import { SectionTab } from 'polotno/side-panel';
-import { InputGroup, HTMLSelect, ButtonGroup, Button, NumericInput, Colors } from '@blueprintjs/core';
+import { InputGroup, ButtonGroup, Button, NumericInput, Colors } from '@blueprintjs/core';
 
-// Suppress Next.js <img> warnings for dynamic CDN icons
-/* eslint-disable @next/next/no-img-element */
+// Your CORS proxy
+const CORS_PROXY = 'https://cors.ericmwangi13.workers.dev/?url=';
 
-// ~100 free Phosphor icons (MIT license, public CDN)
+// \~100 free Phosphor icons (MIT license)
 const FREE_ICONS = [
   'house', 'house-line', 'star', 'star-fill', 'heart', 'heart-fill', 'user', 'user-circle', 
   'users', 'shopping-cart', 'shopping-bag', 'camera', 'camera-rotate', 'envelope', 'envelope-open',
@@ -48,19 +48,20 @@ export const FreeIconsPanel = observer(({ store }) => {
 
   const addIcon = async (name) => {
     const size = getSize();
-    const url = `https://unpkg.com/@phosphor-icons/web@2.1.0/src/icons/${name}-bold.svg`;
+    const originalUrl = `https://unpkg.com/@phosphor-icons/web@2.1.0/src/icons/${name}-bold.svg`;
+    const proxiedUrl = CORS_PROXY + encodeURIComponent(originalUrl);
 
     try {
-      const response = await fetch(url);
+      const response = await fetch(proxiedUrl);
       if (!response.ok) throw new Error('Failed to fetch SVG');
-      
+
       let svgText = await response.text();
-      // Inject fill color directly into SVG
+      // Inject fill color
       svgText = svgText.replace('<svg', `<svg fill="${color}"`);
 
       store.activePage.addElement({
         type: 'svg',
-        content: svgText, // Use 'content' for inline SVG with custom fill
+        content: svgText,
         x: store.width / 2 - size / 2,
         y: store.height / 2 - size / 2,
         width: size,
@@ -157,7 +158,7 @@ export const FreeIconsPanel = observer(({ store }) => {
               onMouseLeave={e => e.currentTarget.style.background = '#f8f9fa'}
             >
               <img
-                src={`https://unpkg.com/@phosphor-icons/web@2.1.0/src/icons/${name}-bold.svg`}
+                src={`\( {CORS_PROXY} \){encodeURIComponent(`https://unpkg.com/@phosphor-icons/web@2.1.0/src/icons/${name}-bold.svg`)}`}
                 alt={name}
                 style={{ 
                   width: 32, 
@@ -175,7 +176,7 @@ export const FreeIconsPanel = observer(({ store }) => {
 
         {filteredIcons.length === 0 && search && (
           <div style={{ textAlign: 'center', padding: '20px', color: Colors.GRAY3 }}>
-            No icons found for "{search}"
+            Not found
           </div>
         )}
       </div>
