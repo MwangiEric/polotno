@@ -5,12 +5,11 @@ import { observer } from 'mobx-react-lite';
 import { SectionTab } from 'polotno/side-panel';
 import { InputGroup, ButtonGroup, Button, NumericInput, Colors } from '@blueprintjs/core';
 
-// Your CORS proxy
-const CORS_PROXY = 'https://cors.ericmwangi13.workers.dev/?url=';
+// Use jsDelivr CDN (better CORS support, no proxy needed)
+const ICON_BASE = 'https://cdn.jsdelivr.net/npm/@phosphor-icons/web@2.1.0/src/icons/';
 
-// \~100 free Phosphor icons (MIT license)
 const FREE_ICONS = [
-  'house', 'house-line', 'star', 'star-fill', 'heart', 'heart-fill', 'user', 'user-circle', 
+  'house', 'house-line', 'star', 'star-fill', 'heart', 'heart-fill', 'user', 'user-circle',
   'users', 'shopping-cart', 'shopping-bag', 'camera', 'camera-rotate', 'envelope', 'envelope-open',
   'phone', 'phone-call', 'map-pin', 'map-pin-area', 'calendar', 'calendar-blank', 'clock', 'clock-afternoon',
   'tag', 'tag-simple', 'truck', 'gift', 'award', 'medal', 'shield-check', 'shield-checkered',
@@ -33,7 +32,7 @@ export const FreeIconsPanel = observer(({ store }) => {
   const [color, setColor] = useState('#000000');
 
   const lowerSearch = search.toLowerCase().trim();
-  const filteredIcons = FREE_ICONS.filter(name => 
+  const filteredIcons = FREE_ICONS.filter(name =>
     name.toLowerCase().includes(lowerSearch)
   );
 
@@ -48,15 +47,13 @@ export const FreeIconsPanel = observer(({ store }) => {
 
   const addIcon = async (name) => {
     const size = getSize();
-    const originalUrl = `https://unpkg.com/@phosphor-icons/web@2.1.0/src/icons/${name}-bold.svg`;
-    const proxiedUrl = CORS_PROXY + encodeURIComponent(originalUrl);
+    const url = `${ICON_BASE}${name}-bold.svg`;
 
     try {
-      const response = await fetch(proxiedUrl);
-      if (!response.ok) throw new Error('Failed to fetch SVG');
+      const response = await fetch(url);
+      if (!response.ok) throw new Error('Failed to fetch');
 
       let svgText = await response.text();
-      // Inject fill color
       svgText = svgText.replace('<svg', `<svg fill="${color}"`);
 
       store.activePage.addElement({
@@ -158,10 +155,10 @@ export const FreeIconsPanel = observer(({ store }) => {
               onMouseLeave={e => e.currentTarget.style.background = '#f8f9fa'}
             >
               <img
-                src={`${CORS_PROXY}${encodeURIComponent(`https://unpkg.com/@phosphor-icons/web@2.1.0/src/icons/${name}-bold.svg`)}`}
+                src={`${ICON_BASE}${name}-bold.svg`}
                 alt={name}
-                style={{ 
-                  width: 32, 
+                style={{
+                  width: 32,
                   height: 32,
                   filter: color !== '#000000' ? 'invert(100%)' : 'none',
                   opacity: 0.8
