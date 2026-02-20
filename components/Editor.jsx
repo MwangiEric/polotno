@@ -16,7 +16,8 @@ import "@blueprintjs/popover2/lib/css/blueprint-popover2.css";
 import { ImagApiSection } from './sections/imagapi';
 import { BtchImgSection } from './sections/btchimg';
 import { JsonViewerSection } from './sections/json-viewer';
-import { PexelsSection } from './sections/pexels';  // ← NEW
+import { PexelsSection } from './sections/pexels';
+import { RealEstateSection } from './sections/realestate'; // ← FIXED: Added missing import
 
 // Create Polotno store (use your real key from Vercel env)
 const store = createStore({
@@ -32,8 +33,8 @@ const mySections = [
   ImagApiSection,               // Your image search / assets
   BtchImgSection,               // Batch images
   JsonViewerSection,            // JSON viewer + export
-  PexelsSection,                // ← NEW: Pexels free stock photos
-  RealEstateSection,
+  PexelsSection,                // Pexels free stock photos
+  RealEstateSection,            // Real Estate scraper & poster generator
 ];
 
 export default function Editor() {
