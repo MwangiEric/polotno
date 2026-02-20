@@ -16,7 +16,6 @@ import "@blueprintjs/popover2/lib/css/blueprint-popover2.css";
 import { ImagApiSection } from './sections/imagapi';
 import { BtchImgSection } from './sections/btchimg';
 import { JsonViewerSection } from './sections/json-viewer';
-import { FreeIconsSection } from './sections/free-icons';
 import { PexelsSection } from './sections/pexels';  // ← NEW
 
 // Create Polotno store (use your real key from Vercel env)
@@ -33,7 +32,6 @@ const mySections = [
   ImagApiSection,               // Your image search / assets
   BtchImgSection,               // Batch images
   JsonViewerSection,            // JSON viewer + export
-  FreeIconsSection,             // Your free icons tab
   PexelsSection,                // ← NEW: Pexels free stock photos
   RealEstateSection,
 ];
