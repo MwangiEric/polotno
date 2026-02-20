@@ -158,7 +158,7 @@ export const FreeIconsPanel = observer(({ store }) => {
               onMouseLeave={e => e.currentTarget.style.background = '#f8f9fa'}
             >
               <img
-                src={`{CORS_PROXY}{encodeURIComponent(`https://unpkg.com/@phosphor-icons/web@2.1.0/src/icons/${name}-bold.svg`)}`}
+                src={`${CORS_PROXY}${encodeURIComponent(`https://unpkg.com/@phosphor-icons/web@2.1.0/src/icons/${name}-bold.svg`)}`}
                 alt={name}
                 style={{ 
                   width: 32, 
