@@ -18,6 +18,8 @@ import { BtchImgSection } from './sections/btchimg';
 import { JsonViewerSection } from './sections/json-viewer';
 import { PexelsSection } from './sections/pexels';
 import { RealEstateSection } from './sections/realestate'; // ← FIXED: Added missing import
+import { MyTemplatesSection } from './sections/my-templates';
+
 
 // Create Polotno store (use your real key from Vercel env)
 const store = createStore({
@@ -35,6 +37,7 @@ const mySections = [
   JsonViewerSection,            // JSON viewer + export
   PexelsSection,                // Pexels free stock photos
   RealEstateSection,            // Real Estate scraper & poster generator
+MyTemplatesSection,
 ];
 
 export default function Editor() {
