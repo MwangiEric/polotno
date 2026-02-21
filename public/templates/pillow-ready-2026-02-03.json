@@ -1,0 +1,35 @@
+{
+  "width": 1080,
+  "height": 1080,
+  "background": "#ffffff",
+  "elements": [
+    {
+      "type": "image",
+      "src": "https://images.unsplash.com/photo-1600184430626-1dd6087315d8?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=MnwxMTY5OTZ8MHwxfHNlYXJjaHw3fHx3YWZmbGV8ZW58MHx8fHwxNjM1NTkwMjc3&ixlib=rb-1.2.1&q=80&w=1080",
+      "x": 994,
+      "y": 310,
+      "width": 602,
+      "height": 861
+    },
+    {
+      "type": "text",
+      "text": "product_name\n\n",
+      "x": 39,
+      "y": 164,
+      "fontSize": 66,
+      "color": "rgba(189,130,36,1)",
+      "fontFamily": "Libre Baskerville",
+      "align": "center"
+    },
+    {
+      "type": "text",
+      "text": "product_price",
+      "x": 240,
+      "y": 1005,
+      "fontSize": 44,
+      "color": "black",
+      "fontFamily": "Roboto",
+      "align": "center"
+    }
+  ]
+}
