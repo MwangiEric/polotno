@@ -1,0 +1,83 @@
+{
+  "name": "Danco Standard",
+  "width": 1080,
+  "height": 1920,
+  "pages": [
+    {
+      "children": [
+        {
+          "type": "text",
+          "name": "title",
+          "text": "{{title}}",
+          "x": 60,
+          "y": 60,
+          "width": 960,
+          "fontSize": 48,
+          "fontFamily": "Arial",
+          "fill": "#ffffff",
+          "fontWeight": "bold",
+          "align": "center"
+        },
+        {
+          "type": "text",
+          "name": "price",
+          "text": "{{price}}",
+          "x": 60,
+          "y": 140,
+          "width": 960,
+          "fontSize": 72,
+          "fontFamily": "Arial",
+          "fill": "#00ff9d",
+          "fontWeight": "bold",
+          "align": "center"
+        },
+        {
+          "type": "text",
+          "name": "specs",
+          "text": "{{specs}}",
+          "x": 60,
+          "y": 240,
+          "width": 960,
+          "fontSize": 32,
+          "fontFamily": "Arial",
+          "fill": "#cccccc",
+          "align": "center"
+        },
+        {
+          "type": "image",
+          "name": "mainImage",
+          "src": "{{image}}",
+          "x": 0,
+          "y": 320,
+          "width": 1080,
+          "height": 1080,
+          "crop": { "x": 0, "y": 0, "width": 1, "height": 1 }
+        },
+        {
+          "type": "text",
+          "name": "description",
+          "text": "{{description}}",
+          "x": 60,
+          "y": 1440,
+          "width": 960,
+          "fontSize": 24,
+          "fontFamily": "Arial",
+          "fill": "#dddddd",
+          "lineHeight": 1.4
+        },
+        {
+          "type": "text",
+          "name": "footer",
+          "text": "Listed on Danco.co.ke",
+          "x": 60,
+          "y": 1840,
+          "width": 960,
+          "fontSize": 20,
+          "fontFamily": "Arial",
+          "fill": "#888888",
+          "align": "center"
+        }
+      ]
+    }
+  ]
+}
