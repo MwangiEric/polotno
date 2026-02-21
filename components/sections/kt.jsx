@@ -6,6 +6,7 @@ import { SectionTab } from 'polotno/side-panel';
 import { InputGroup, Button, Callout, Spinner } from '@blueprintjs/core';
 
 const CORS_PROXY = 'https://cors.ericmwangi13.workers.dev/?url=';
+const WSRV = 'https://wsrv.nl/?url=';
 
 export const KtPanel = observer(({ store }) => {
   const [url, setUrl] = useState('');
@@ -35,7 +36,6 @@ export const KtPanel = observer(({ store }) => {
       const parser = new DOMParser();
       const doc = parser.parseFromString(xmlText, 'text/xml');
 
-      // Get first (and usually only) item
       const item = doc.querySelector('item');
       if (!item) throw new Error('No product item found in RSS');
 
@@ -43,30 +43,32 @@ export const KtPanel = observer(({ store }) => {
       const description = item.querySelector('description')?.textContent?.trim() || '';
       const link = item.querySelector('link')?.textContent?.trim() || '';
 
-      // Parse description for price, RAM, ROM
       let price = 'Price not found';
       let ram = 'N/A';
       let rom = 'N/A';
 
       if (description.includes('Price:')) {
-        const parts = description.split('|');
-        price = parts.find(p => p.includes('Price:'))?.trim() || price;
-        ram = parts.find(p => p.includes('RAM:'))?.trim() || ram;
-        rom = parts.find(p => p.includes('ROM:'))?.trim() || rom;
+        const parts = description.split('|').map(p => p.trim());
+        price = parts.find(p => p.includes('Price:')) || price;
+        ram = parts.find(p => p.includes('RAM:')) || ram;
+        rom = parts.find(p => p.includes('ROM:')) || rom;
       }
 
-      // Images from <category> tags (your RSS uses categories for images)
+      // Images from <category> tags – route through wsrv.nl
       const images = [];
       item.querySelectorAll('category').forEach(cat => {
-        const text = cat.textContent?.trim();
-        if (text?.startsWith('https://wsrv.nl/?url=')) {
-          // Extract original image URL from wsrv proxy
-          const match = text.match(/url=(https[^&]+)/);
+        let src = cat.textContent?.trim();
+        if (src?.startsWith('https://wsrv.nl/?url=')) {
+          const match = src.match(/url=(https[^&]+)/);
           if (match?.[1]) {
-            images.push(decodeURIComponent(match[1]));
-          } else {
-            images.push(text); // fallback to proxied
+            const original = decodeURIComponent(match[1]);
+            // Use wsrv with fixed size & style
+            src = `${WSRV}${encodeURIComponent(original)}&w=800&h=800&fit=contain&bg=white`;
+            images.push(src);
           }
+        } else if (src?.startsWith('http')) {
+          // Fallback: also proxy original images
+          images.push(`${WSRV}${encodeURIComponent(src)}&w=800&h=800&fit=contain&bg=white`);
         }
       });
 
@@ -77,7 +79,7 @@ export const KtPanel = observer(({ store }) => {
         rom,
         description,
         link,
-        images: images.slice(0, 6) // limit to 6 images
+        images: images.slice(0, 6)
       };
 
       setResult(data);
@@ -107,7 +109,7 @@ export const KtPanel = observer(({ store }) => {
       align: 'center'
     });
 
-    // Price (big & highlighted)
+    // Price (big & green highlight)
     page.addElement({
       type: 'text',
       text: result.price,
@@ -132,7 +134,7 @@ export const KtPanel = observer(({ store }) => {
       align: 'center'
     });
 
-    // Main image (first one)
+    // Main product image (first one)
     if (result.images[0]) {
       page.addElement({
         type: 'image',
@@ -156,7 +158,7 @@ export const KtPanel = observer(({ store }) => {
       fill: '#dddddd'
     });
 
-    // Small gallery thumbnails (bottom)
+    // Small gallery thumbnails (bottom row)
     result.images.slice(1, 5).forEach((imgUrl, i) => {
       page.addElement({
         type: 'image',
@@ -170,14 +172,14 @@ export const KtPanel = observer(({ store }) => {
       });
     });
 
-    alert('Kenyatronics product added to canvas!\nNow customize layout, add logo, price badge, etc.');
+    alert('Kenyatronics product poster generated!\nCustomize layout, add logo, price badge, etc.');
   };
 
   return (
     <div style={{ height: '100%', padding: 16, display: 'flex', flexDirection: 'column' }}>
       <h3>Kenyatronics Product Poster</h3>
       <p style={{ marginBottom: 16, color: '#aaa', fontSize: '14px' }}>
-        Paste a Kenyatronics RSS URL (myrhub.vercel.app/kenyatronics/view/...) to auto-fill poster.
+        Paste a Kenyatronics RSS URL to auto-create product poster.
       </p>
 
       <InputGroup
@@ -196,7 +198,7 @@ export const KtPanel = observer(({ store }) => {
         loading={loading}
         disabled={loading || !url.trim()}
       >
-        {loading ? 'Loading...' : 'Load & Fill Product'}
+        {loading ? 'Loading...' : 'Load & Generate Poster'}
       </Button>
 
       {error && (
@@ -211,7 +213,7 @@ export const KtPanel = observer(({ store }) => {
             <strong>{result.title}</strong><br />
             <strong style={{ color: '#00ff9d' }}>{result.price}</strong><br /><br />
             {result.ram} • {result.rom}<br /><br />
-            <strong>Images found:</strong> {result.images.length}
+            <strong>Images ready:</strong> {result.images.length}
           </Callout>
 
           <Button
@@ -220,7 +222,7 @@ export const KtPanel = observer(({ store }) => {
             onClick={fillCanvas}
             style={{ marginTop: 20, width: '100%' }}
           >
-            Fill Current Canvas Now
+            Fill Canvas with Poster
           </Button>
         </div>
       )}
