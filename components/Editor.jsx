@@ -19,6 +19,7 @@ import { JsonViewerSection } from './sections/json-viewer';
 import { PexelsSection } from './sections/pexels';
 import { RealEstateSection } from './sections/realestate'; // ← FIXED: Added missing import
 import { MyTemplatesSection } from './sections/my-templates';
+import { KtSection } from './sections/kt';
 
 
 // Create Polotno store (use your real key from Vercel env)
@@ -38,6 +39,7 @@ const mySections = [
   PexelsSection,                // Pexels free stock photos
   RealEstateSection,            // Real Estate scraper & poster generator
 MyTemplatesSection,
+  KtSection,
 ];
 
 export default function Editor() {
