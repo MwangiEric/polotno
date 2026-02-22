@@ -25,10 +25,9 @@ export const KtPanel = observer(({ store }) => {
     setResult(null);
 
     try {
-      // Extract slug from URL (everything after /view-product/)
+      // Extract slug from URL
       const slugMatch = url.match(/\/view-product\/([^/]+)/);
       const slug = slugMatch?.[1] || '';
-
       if (!slug) throw new Error('Could not extract product slug');
 
       // Build RSSHub JSON URL
@@ -36,25 +35,23 @@ export const KtPanel = observer(({ store }) => {
       const proxyUrl = CORS_PROXY + encodeURIComponent(jsonUrl);
 
       const res = await fetch(proxyUrl);
-      if (!res.ok) {
-        throw new Error(`RSSHub fetch error ${res.status}`);
-      }
+      if (!res.ok) throw new Error(`RSSHub fetch error ${res.status}`);
 
       const json = await res.json();
 
-      // Parse JSONFeed structure
+      // Parse JSONFeed
       const item = json.items?.[0];
       if (!item) throw new Error('No product item in JSON');
 
       const title = item.title || 'Product';
 
-      // Extract from content_html (it's a JSON string inside)
+      // Parse content_html (JSON string)
       let contentData = {};
       try {
         const contentStr = item.content_html || '{}';
         contentData = JSON.parse(contentStr);
       } catch (e) {
-        console.warn('Failed to parse content_html JSON:', e);
+        console.warn('Failed to parse content_html:', e);
       }
 
       const name = contentData.name || title;
@@ -62,10 +59,10 @@ export const KtPanel = observer(({ store }) => {
       const ram = contentData.ram || 'N/A';
       const rom = contentData.rom || 'N/A';
 
-      // Images from content_html.images array
-      const images = contentData.images || [];
+      // Images from content_html.images
+      let images = contentData.images || [];
 
-      // Fallback to <category> tags if images array missing
+      // Fallback to tags if no images array
       if (images.length === 0) {
         item.tags?.forEach(tag => {
           if (tag.startsWith('https://wsrv.nl/?url=')) {
@@ -91,11 +88,9 @@ export const KtPanel = observer(({ store }) => {
     }
   };
 
-const fillCanvas = () => {
-  if (!result) return;
+  const fillCanvas = () => {
+    if (!result) return;
 
-  // Wrap everything in one atomic action (safest)
-  store.action(() => {
     const page = store.activePage;
 
     page.children.forEach(el => {
@@ -106,14 +101,12 @@ const fillCanvas = () => {
         newText = newText.replace(/{{spec1}}/g, result.spec1 || '');
         newText = newText.replace(/{{spec2}}/g, result.spec2 || '');
 
-        // Only update if changed (avoids unnecessary re-renders)
         if (newText !== el.text) {
           el.set({ text: newText });
         }
       }
 
       if (el.type === 'image') {
-        // Match by element name: image1, image2, image3...
         const match = el.name?.match(/image(\d+)/i);
         if (match) {
           const index = parseInt(match[1], 10) - 1;
@@ -123,10 +116,9 @@ const fillCanvas = () => {
         }
       }
     });
-  });
 
-  alert('Template filled successfully! All placeholders replaced.');
-};
+    alert('Template filled successfully! All placeholders replaced.');
+  };
 
   return (
     <div style={{ height: '100%', padding: 16, display: 'flex', flexDirection: 'column' }}>
