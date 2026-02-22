@@ -25,27 +25,24 @@ export const KtPanel = observer(({ store }) => {
     setResult(null);
 
     try {
-      // Extract slug from URL
+      // Extract slug
       const slugMatch = url.match(/\/view-product\/([^/]+)/);
       const slug = slugMatch?.[1] || '';
       if (!slug) throw new Error('Could not extract product slug');
 
-      // Build RSSHub JSON URL
       const jsonUrl = `${RSSHUB_BASE}${slug}?format=json`;
       const proxyUrl = CORS_PROXY + encodeURIComponent(jsonUrl);
 
       const res = await fetch(proxyUrl);
-      if (!res.ok) throw new Error(`RSSHub fetch error ${res.status}`);
+      if (!res.ok) throw new Error(`RSSHub error ${res.status}`);
 
       const json = await res.json();
 
-      // Parse JSONFeed
       const item = json.items?.[0];
-      if (!item) throw new Error('No product item in JSON');
+      if (!item) throw new Error('No product item found');
 
       const title = item.title || 'Product';
 
-      // Parse content_html (JSON string)
       let contentData = {};
       try {
         const contentStr = item.content_html || '{}';
@@ -59,10 +56,8 @@ export const KtPanel = observer(({ store }) => {
       const ram = contentData.ram || 'N/A';
       const rom = contentData.rom || 'N/A';
 
-      // Images from content_html.images
       let images = contentData.images || [];
 
-      // Fallback to tags if no images array
       if (images.length === 0) {
         item.tags?.forEach(tag => {
           if (tag.startsWith('https://wsrv.nl/?url=')) {
@@ -91,40 +86,45 @@ export const KtPanel = observer(({ store }) => {
   const fillCanvas = () => {
     if (!result) return;
 
-    const page = store.activePage;
+    // Small delay to ensure Polotno elements are fully ready
+    setTimeout(() => {
+      const page = store.activePage;
 
-    page.children.forEach(el => {
-      if (el.type === 'text') {
-        let newText = el.text || '';
-        newText = newText.replace(/{{name}}/g, result.name || '');
-        newText = newText.replace(/{{price}}/g, result.price || '');
-        newText = newText.replace(/{{spec1}}/g, result.spec1 || '');
-        newText = newText.replace(/{{spec2}}/g, result.spec2 || '');
+      page.children.forEach(el => {
+        if (el.type === 'text') {
+          let newText = (el.text || '').trim();
+          const originalText = newText;
 
-        if (newText !== el.text) {
-          el.set({ text: newText });
-        }
-      }
+          newText = newText.replace(/{{name}}/gi, result.name || '');
+          newText = newText.replace(/{{price}}/gi, result.price || '');
+          newText = newText.replace(/{{spec1}}/gi, result.spec1 || '');
+          newText = newText.replace(/{{spec2}}/gi, result.spec2 || '');
 
-      if (el.type === 'image') {
-        const match = el.name?.match(/image(\d+)/i);
-        if (match) {
-          const index = parseInt(match[1], 10) - 1;
-          if (result.images[index]) {
-            el.set({ src: result.images[index] });
+          if (newText !== originalText) {
+            el.set({ text: newText });
           }
         }
-      }
-    });
 
-    alert('Template filled successfully! All placeholders replaced.');
+        if (el.type === 'image') {
+          const match = el.name?.match(/image(\d+)/i);
+          if (match) {
+            const index = parseInt(match[1], 10) - 1;
+            if (result.images[index]) {
+              el.set({ src: result.images[index] });
+            }
+          }
+        }
+      });
+
+      alert('Template updated! Name, price, specs and images replaced.');
+    }, 100); // 100ms delay - adjust to 300 if still not updating
   };
 
   return (
     <div style={{ height: '100%', padding: 16, display: 'flex', flexDirection: 'column' }}>
       <h3>Kenyatronics Poster Generator</h3>
       <p style={{ marginBottom: 16, color: '#aaa', fontSize: '14px' }}>
-        Paste full Kenyatronics product URL to auto-fill your template.
+        Paste the full Kenyatronics product URL to auto-fill your template.
       </p>
 
       <InputGroup
