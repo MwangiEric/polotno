@@ -6,7 +6,7 @@ import { SectionTab } from 'polotno/side-panel';
 import { InputGroup, Button, Callout, Spinner } from '@blueprintjs/core';
 
 const CORS_PROXY = 'https://cors.ericmwangi13.workers.dev/?url=';
-const WSRV = 'https://wsrv.nl/?url=';
+const RSSHUB_BASE = 'https://myrhub.vercel.app/kenyatronics/view/';
 
 export const KtPanel = observer(({ store }) => {
   const [url, setUrl] = useState('');
@@ -15,8 +15,8 @@ export const KtPanel = observer(({ store }) => {
   const [result, setResult] = useState(null);
 
   const scrapeKtProduct = async () => {
-    if (!url.trim() || !url.includes('myrhub.vercel.app/kenyatronics/view/')) {
-      setError('Please enter a valid Kenyatronics RSS URL');
+    if (!url.trim() || !url.includes('kenyatronics.com/view-product/')) {
+      setError('Please enter a valid Kenyatronics product URL');
       return;
     }
 
@@ -25,60 +25,60 @@ export const KtPanel = observer(({ store }) => {
     setResult(null);
 
     try {
-      const proxyUrl = CORS_PROXY + encodeURIComponent(url.trim());
+      // Extract slug from URL (everything after /view-product/)
+      const slugMatch = url.match(/\/view-product\/([^/]+)/);
+      const slug = slugMatch?.[1] || '';
+
+      if (!slug) throw new Error('Could not extract product slug');
+
+      // Build RSSHub JSON URL
+      const jsonUrl = `${RSSHUB_BASE}${slug}?format=json`;
+      const proxyUrl = CORS_PROXY + encodeURIComponent(jsonUrl);
+
       const res = await fetch(proxyUrl);
-
       if (!res.ok) {
-        throw new Error(`Proxy error ${res.status}`);
+        throw new Error(`RSSHub fetch error ${res.status}`);
       }
 
-      const xmlText = await res.text();
-      const parser = new DOMParser();
-      const doc = parser.parseFromString(xmlText, 'text/xml');
+      const json = await res.json();
 
-      const item = doc.querySelector('item');
-      if (!item) throw new Error('No product item found in RSS');
+      // Parse JSONFeed structure
+      const item = json.items?.[0];
+      if (!item) throw new Error('No product item in JSON');
 
-      const title = item.querySelector('title')?.textContent?.trim() || 'Product';
-      const description = item.querySelector('description')?.textContent?.trim() || '';
-      const link = item.querySelector('link')?.textContent?.trim() || '';
+      const title = item.title || 'Product';
 
-      let price = 'Price not found';
-      let ram = 'N/A';
-      let rom = 'N/A';
-
-      if (description.includes('Price:')) {
-        const parts = description.split('|').map(p => p.trim());
-        price = parts.find(p => p.includes('Price:')) || price;
-        ram = parts.find(p => p.includes('RAM:')) || ram;
-        rom = parts.find(p => p.includes('ROM:')) || rom;
+      // Extract from content_html (it's a JSON string inside)
+      let contentData = {};
+      try {
+        const contentStr = item.content_html || '{}';
+        contentData = JSON.parse(contentStr);
+      } catch (e) {
+        console.warn('Failed to parse content_html JSON:', e);
       }
 
-      // Images from <category> tags – route through wsrv.nl
-      const images = [];
-      item.querySelectorAll('category').forEach(cat => {
-        let src = cat.textContent?.trim();
-        if (src?.startsWith('https://wsrv.nl/?url=')) {
-          const match = src.match(/url=(https[^&]+)/);
-          if (match?.[1]) {
-            const original = decodeURIComponent(match[1]);
-            // Use wsrv with fixed size & style
-            src = `${WSRV}${encodeURIComponent(original)}&w=800&h=800&fit=contain&bg=white`;
-            images.push(src);
+      const name = contentData.name || title;
+      const price = contentData.price ? `KSh ${contentData.price}` : 'Price not found';
+      const ram = contentData.ram || 'N/A';
+      const rom = contentData.rom || 'N/A';
+
+      // Images from content_html.images array
+      const images = contentData.images || [];
+
+      // Fallback to <category> tags if images array missing
+      if (images.length === 0) {
+        item.tags?.forEach(tag => {
+          if (tag.startsWith('https://wsrv.nl/?url=')) {
+            images.push(tag);
           }
-        } else if (src?.startsWith('http')) {
-          // Fallback: also proxy original images
-          images.push(`${WSRV}${encodeURIComponent(src)}&w=800&h=800&fit=contain&bg=white`);
-        }
-      });
+        });
+      }
 
       const data = {
-        title,
+        name,
         price,
-        ram,
-        rom,
-        description,
-        link,
+        spec1: `RAM: ${ram}`,
+        spec2: `ROM: ${rom}`,
         images: images.slice(0, 6)
       };
 
@@ -96,96 +96,45 @@ export const KtPanel = observer(({ store }) => {
 
     const page = store.activePage;
 
-    // Title
-    page.addElement({
-      type: 'text',
-      text: result.title,
-      x: 60,
-      y: 40,
-      width: 960,
-      fontSize: 48,
-      fontFamily: 'Arial',
-      fill: '#ffffff',
-      align: 'center'
+    // Replace placeholders in all text elements
+    page.children.forEach(el => {
+      if (el.type === 'text') {
+        let newText = el.text || '';
+        newText = newText.replace(/{{name}}/g, result.name);
+        newText = newText.replace(/{{price}}/g, result.price);
+        newText = newText.replace(/{{spec1}}/g, result.spec1);
+        newText = newText.replace(/{{spec2}}/g, result.spec2);
+        if (newText !== el.text) {
+          el.text = newText;
+        }
+      }
+
+      // Replace image placeholders ({{image1}}, {{image2}}, etc.)
+      if (el.type === 'image') {
+        const match = el.name?.match(/image(\d+)/);
+        if (match) {
+          const index = parseInt(match[1], 10) - 1;
+          if (result.images[index]) {
+            el.src = result.images[index];
+          }
+        }
+      }
     });
 
-    // Price (big & green highlight)
-    page.addElement({
-      type: 'text',
-      text: result.price,
-      x: 60,
-      y: 140,
-      width: 960,
-      fontSize: 72,
-      fontFamily: 'Arial',
-      fill: '#00ff9d',
-      align: 'center'
-    });
-
-    // Specs (RAM / ROM)
-    page.addElement({
-      type: 'text',
-      text: `${result.ram} • ${result.rom}`,
-      x: 60,
-      y: 260,
-      width: 960,
-      fontSize: 38,
-      fill: '#cccccc',
-      align: 'center'
-    });
-
-    // Main product image (first one)
-    if (result.images[0]) {
-      page.addElement({
-        type: 'image',
-        src: result.images[0],
-        x: 0,
-        y: 360,
-        width: 1080,
-        height: 1080
-      });
-    }
-
-    // Short description or link
-    page.addElement({
-      type: 'text',
-      text: result.description || result.link || 'View full details online',
-      x: 60,
-      y: 1480,
-      width: 960,
-      fontSize: 28,
-      lineHeight: 1.5,
-      fill: '#dddddd'
-    });
-
-    // Small gallery thumbnails (bottom row)
-    result.images.slice(1, 5).forEach((imgUrl, i) => {
-      page.addElement({
-        type: 'image',
-        src: imgUrl,
-        x: 100 + i * 220,
-        y: 1680,
-        width: 180,
-        height: 180,
-        keepRatio: true,
-        name: `gallery-thumb-${i}`
-      });
-    });
-
-    alert('Kenyatronics product poster generated!\nCustomize layout, add logo, price badge, etc.');
+    alert('Kenyatronics product data filled!\nAll {{name}}, {{price}}, {{spec1}}, {{spec2}}, {{image1}} etc. replaced.');
   };
 
   return (
     <div style={{ height: '100%', padding: 16, display: 'flex', flexDirection: 'column' }}>
-      <h3>Kenyatronics Product Poster</h3>
+      <h3>Kenyatronics Poster Generator</h3>
       <p style={{ marginBottom: 16, color: '#aaa', fontSize: '14px' }}>
-        Paste a Kenyatronics RSS URL to auto-create product poster.
+        Paste full Kenyatronics product URL to auto-fill your template.
       </p>
 
       <InputGroup
         large
         leftIcon="globe-network"
-        placeholder="https://myrhub.vercel.app/kenyatronics/view/iphone-12-pro..."
+        placeholder="https://kenyatronics.com/view-product/iphone-12-pro-6gb-ram-512gb-rom"
         value={url}
         onChange={e => setUrl(e.target.value)}
         style={{ marginBottom: 16 }}
@@ -198,7 +147,7 @@ export const KtPanel = observer(({ store }) => {
         loading={loading}
         disabled={loading || !url.trim()}
       >
-        {loading ? 'Loading...' : 'Load & Generate Poster'}
+        {loading ? 'Loading...' : 'Load & Fill Template'}
       </Button>
 
       {error && (
@@ -210,9 +159,9 @@ export const KtPanel = observer(({ store }) => {
       {result && (
         <div style={{ marginTop: 24, flex: 1, overflowY: 'auto' }}>
           <Callout intent="success" title="Product Loaded">
-            <strong>{result.title}</strong><br />
+            <strong>{result.name}</strong><br />
             <strong style={{ color: '#00ff9d' }}>{result.price}</strong><br /><br />
-            {result.ram} • {result.rom}<br /><br />
+            {result.spec1} • {result.spec2}<br /><br />
             <strong>Images ready:</strong> {result.images.length}
           </Callout>
 
@@ -222,7 +171,7 @@ export const KtPanel = observer(({ store }) => {
             onClick={fillCanvas}
             style={{ marginTop: 20, width: '100%' }}
           >
-            Fill Canvas with Poster
+            Fill Current Canvas (Replace Placeholders)
           </Button>
         </div>
       )}
