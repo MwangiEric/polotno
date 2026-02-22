@@ -91,38 +91,42 @@ export const KtPanel = observer(({ store }) => {
     }
   };
 
-  const fillCanvas = () => {
-    if (!result) return;
+const fillCanvas = () => {
+  if (!result) return;
 
+  // Wrap everything in one atomic action (safest)
+  store.action(() => {
     const page = store.activePage;
 
-    // Replace placeholders in all text elements
     page.children.forEach(el => {
       if (el.type === 'text') {
         let newText = el.text || '';
-        newText = newText.replace(/{{name}}/g, result.name);
-        newText = newText.replace(/{{price}}/g, result.price);
-        newText = newText.replace(/{{spec1}}/g, result.spec1);
-        newText = newText.replace(/{{spec2}}/g, result.spec2);
+        newText = newText.replace(/{{name}}/g, result.name || '');
+        newText = newText.replace(/{{price}}/g, result.price || '');
+        newText = newText.replace(/{{spec1}}/g, result.spec1 || '');
+        newText = newText.replace(/{{spec2}}/g, result.spec2 || '');
+
+        // Only update if changed (avoids unnecessary re-renders)
         if (newText !== el.text) {
-          el.text = newText;
+          el.set({ text: newText });
         }
       }
 
-      // Replace image placeholders ({{image1}}, {{image2}}, etc.)
       if (el.type === 'image') {
-        const match = el.name?.match(/image(\d+)/);
+        // Match by element name: image1, image2, image3...
+        const match = el.name?.match(/image(\d+)/i);
         if (match) {
           const index = parseInt(match[1], 10) - 1;
           if (result.images[index]) {
-            el.src = result.images[index];
+            el.set({ src: result.images[index] });
           }
         }
       }
     });
+  });
 
-    alert('Kenyatronics product data filled!\nAll {{name}}, {{price}}, {{spec1}}, {{spec2}}, {{image1}} etc. replaced.');
-  };
+  alert('Template filled successfully! All placeholders replaced.');
+};
 
   return (
     <div style={{ height: '100%', padding: 16, display: 'flex', flexDirection: 'column' }}>
