@@ -25,7 +25,6 @@ export const KtPanel = observer(({ store }) => {
     setResult(null);
 
     try {
-      // Extract slug
       const slugMatch = url.match(/\/view-product\/([^/]+)/);
       const slug = slugMatch?.[1] || '';
       if (!slug) throw new Error('Could not extract product slug');
@@ -86,22 +85,27 @@ export const KtPanel = observer(({ store }) => {
   const fillCanvas = () => {
     if (!result) return;
 
-    // Small delay to ensure Polotno elements are fully ready
+    // Small delay to ensure Polotno is ready after any async load
     setTimeout(() => {
       const page = store.activePage;
 
+      let updatedCount = 0;
+
       page.children.forEach(el => {
         if (el.type === 'text') {
-          let newText = (el.text || '').trim();
-          const originalText = newText;
+          let currentText = (el.text || '').trim();
+          let newText = currentText;
 
-          newText = newText.replace(/{{name}}/gi, result.name || '');
-          newText = newText.replace(/{{price}}/gi, result.price || '');
-          newText = newText.replace(/{{spec1}}/gi, result.spec1 || '');
-          newText = newText.replace(/{{spec2}}/gi, result.spec2 || '');
+          // Case-insensitive + trim-safe replacement
+          newText = newText.replace(/\{\{name}}/gi, result.name?.trim() || '');
+          newText = newText.replace(/\{\{price}}/gi, result.price?.trim() || '');
+          newText = newText.replace(/\{\{spec1}}/gi, result.spec1?.trim() || '');
+          newText = newText.replace(/\{\{spec2}}/gi, result.spec2?.trim() || '');
 
-          if (newText !== originalText) {
+          if (newText !== currentText) {
             el.set({ text: newText });
+            updatedCount++;
+            console.log('Updated text element:', { old: currentText, new: newText });
           }
         }
 
@@ -110,27 +114,37 @@ export const KtPanel = observer(({ store }) => {
           if (match) {
             const index = parseInt(match[1], 10) - 1;
             if (result.images[index]) {
-              el.set({ src: result.images[index] });
+              // Force rotation reset + set new src
+              el.set({
+                src: result.images[index],
+                rotation: 0  // ← fixes rotated images
+              });
+              updatedCount++;
+              console.log('Updated image element:', { name: el.name, src: result.images[index] });
             }
           }
         }
       });
 
-      alert('Template updated! Name, price, specs and images replaced.');
-    }, 100); // 100ms delay - adjust to 300 if still not updating
+      if (updatedCount > 0) {
+        alert(`Success! ${updatedCount} elements updated (name, price, specs, images).`);
+      } else {
+        alert('No placeholders found to replace. Check element names/text.');
+      }
+    }, 200); // 200ms delay — adjust to 500 if still not updating
   };
 
   return (
     <div style={{ height: '100%', padding: 16, display: 'flex', flexDirection: 'column' }}>
       <h3>Kenyatronics Poster Generator</h3>
       <p style={{ marginBottom: 16, color: '#aaa', fontSize: '14px' }}>
-        Paste the full Kenyatronics product URL to auto-fill your template.
+        Paste full Kenyatronics product URL to auto-fill your template.
       </p>
 
       <InputGroup
         large
         leftIcon="globe-network"
-        placeholder="https://kenyatronics.com/view-product/iphone-12-pro-6gb-ram-512gb-rom"
+        placeholder="https://kenyatronics.com/view-product/..."
         value={url}
         onChange={e => setUrl(e.target.value)}
         style={{ marginBottom: 16 }}
@@ -167,7 +181,7 @@ export const KtPanel = observer(({ store }) => {
             onClick={fillCanvas}
             style={{ marginTop: 20, width: '100%' }}
           >
-            Fill Current Canvas (Replace Placeholders)
+            Fill Current Canvas
           </Button>
         </div>
       )}
