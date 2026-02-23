@@ -1,13 +1,14 @@
-import React, { useState, useEffect, useCallback } from 'react';
+// components/sections/my-templates.jsx
+
+import React, { useState, useEffect } from 'react';
 import { observer } from 'mobx-react-lite';
 import { SectionTab } from 'polotno/side-panel';
 import { 
   Button, Card, InputGroup, FileInput, 
   Dialog, Classes, Callout, Tag, Icon,
-  HTMLSelect, Divider
+  Divider
 } from '@blueprintjs/core';
 import { ImagesGrid } from 'polotno/side-panel/images-grid';
-import FaSave from '@meronex/icons/fa/FaSave';
 
 const STORAGE_KEY = 'polotno_my_templates';
 
@@ -30,11 +31,11 @@ export const MyTemplatesPanel = observer(({ store }) => {
       if (saved) {
         setTemplates(JSON.parse(saved));
       } else {
-        // Load default from public folder
+        // Try to load default from public/templates
         loadDefaultTemplate();
       }
     } catch (err) {
-      console.error('Failed to load templates:', err);
+      console.error('Failed to load templates from storage:', err);
     }
   };
 
@@ -50,7 +51,7 @@ export const MyTemplatesPanel = observer(({ store }) => {
         saveToStorage([defaultTemplate]);
       }
     } catch (err) {
-      console.log('No default template found');
+      console.log('No default template found in public/templates');
     }
   };
 
@@ -58,7 +59,7 @@ export const MyTemplatesPanel = observer(({ store }) => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(templateList));
   };
 
-  // Save current design as template
+  // Save current canvas as template
   const saveCurrentTemplate = () => {
     if (!templateName.trim()) {
       setMessage('Please enter a template name');
@@ -66,56 +67,59 @@ export const MyTemplatesPanel = observer(({ store }) => {
     }
 
     const json = store.toJSON();
-    
-    // Generate thumbnail (low res preview)
+
+    // Generate low-res thumbnail
     store.toDataURL({ pixelRatio: 0.3 }).then(thumbnail => {
       const newTemplate = {
         id: Date.now().toString(),
-        name: templateName,
+        name: templateName.trim(),
         created: new Date().toISOString(),
         width: store.width,
         height: store.height,
-        json: json,
-        thumbnail: thumbnail,
-        elementCount: json.pages[0]?.children?.length || 0
+        json,
+        thumbnail,
+        elementCount: json.pages?.[0]?.children?.length || 0
       };
 
       const updated = [newTemplate, ...templates];
       setTemplates(updated);
       saveToStorage(updated);
-      
+
       setMessage(`Template "${templateName}" saved!`);
       setTemplateName('');
       setIsSaveDialogOpen(false);
-      
+
       setTimeout(() => setMessage(''), 3000);
+    }).catch(err => {
+      setMessage('Failed to generate thumbnail');
+      console.error(err);
     });
   };
 
-  // Upload JSON file
+  // Upload JSON template file
   const handleFileUpload = async (event) => {
-    const file = event.target.files[0];
+    const file = event.target.files?.[0];
     if (!file) return;
 
     try {
       const text = await file.text();
       const json = JSON.parse(text);
-      
-      // Validate it's a polotno template
+
+      // Basic validation
       if (!json.pages && !json.json) {
-        throw new Error('Invalid template format');
+        throw new Error('Invalid Polotno template format');
       }
 
       const templateData = json.json || json;
-      
+
       const newTemplate = {
         id: Date.now().toString(),
-        name: file.name.replace('.json', ''),
+        name: file.name.replace(/\.json$/i, ''),
         created: new Date().toISOString(),
         width: templateData.width || 1080,
         height: templateData.height || 1920,
         json: templateData,
-        thumbnail: null, // Could generate from first page
+        thumbnail: null, // thumbnail can be generated later if needed
         elementCount: templateData.pages?.[0]?.children?.length || 0,
         source: 'uploaded'
       };
@@ -123,23 +127,23 @@ export const MyTemplatesPanel = observer(({ store }) => {
       const updated = [newTemplate, ...templates];
       setTemplates(updated);
       saveToStorage(updated);
-      
+
       setMessage(`Uploaded "${file.name}" successfully!`);
       setSelectedFile(null);
       setTimeout(() => setMessage(''), 3000);
     } catch (err) {
-      setMessage('Error: ' + err.message);
+      setMessage('Error uploading: ' + err.message);
     }
   };
 
-  // Load template into editor
+  // Load template into current editor
   const loadTemplate = (template) => {
     try {
       store.loadJSON(template.json);
       setMessage(`Loaded "${template.name}"`);
       setTimeout(() => setMessage(''), 2000);
     } catch (err) {
-      setMessage('Failed to load template');
+      setMessage('Failed to load template: ' + err.message);
     }
   };
 
@@ -147,7 +151,7 @@ export const MyTemplatesPanel = observer(({ store }) => {
   const deleteTemplate = (id, event) => {
     event.stopPropagation();
     if (!confirm('Delete this template?')) return;
-    
+
     const updated = templates.filter(t => t.id !== id);
     setTemplates(updated);
     saveToStorage(updated);
@@ -156,14 +160,14 @@ export const MyTemplatesPanel = observer(({ store }) => {
   // Export template as JSON file
   const exportTemplate = (template, event) => {
     event.stopPropagation();
-    
+
     const exportData = {
       name: template.name,
       width: template.width,
       height: template.height,
       pages: template.json.pages || template.json
     };
-    
+
     const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -173,7 +177,7 @@ export const MyTemplatesPanel = observer(({ store }) => {
     URL.revokeObjectURL(url);
   };
 
-  // Preview template (show in modal)
+  // Show preview in dialog
   const showPreview = (template, event) => {
     event.stopPropagation();
     setPreviewTemplate(template);
@@ -182,20 +186,18 @@ export const MyTemplatesPanel = observer(({ store }) => {
   return (
     <div style={{ height: '100%', padding: 16, display: 'flex', flexDirection: 'column' }}>
       <h3>My Templates</h3>
-      
-      {/* Action Buttons */}
-      <div style={{ display: 'flex', gap: 10, marginBottom: 16 }}>
+
+      {/* Actions */}
+      <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
         <Button 
           intent="primary" 
           icon="floppy-disk"
           onClick={() => setIsSaveDialogOpen(true)}
           fill
         >
-          Save Current as Template
+          Save Current Design
         </Button>
-      </div>
 
-      <div style={{ display: 'flex', gap: 10, marginBottom: 16 }}>
         <FileInput
           text={selectedFile ? selectedFile.name : 'Upload JSON Template...'}
           onInputChange={handleFileUpload}
@@ -205,14 +207,17 @@ export const MyTemplatesPanel = observer(({ store }) => {
       </div>
 
       {message && (
-        <Callout intent={message.includes('Error') ? 'danger' : 'success'} style={{ marginBottom: 16 }}>
+        <Callout 
+          intent={message.includes('Error') || message.includes('Failed') ? 'danger' : 'success'} 
+          style={{ marginBottom: 16 }}
+        >
           {message}
         </Callout>
       )}
 
       <Divider style={{ marginBottom: 16 }} />
 
-      {/* Templates Grid */}
+      {/* Template List */}
       <div style={{ flex: 1, overflowY: 'auto' }}>
         <p style={{ color: '#888', marginBottom: 12, fontSize: '12px' }}>
           {templates.length} template{templates.length !== 1 ? 's' : ''} saved
@@ -226,7 +231,8 @@ export const MyTemplatesPanel = observer(({ store }) => {
             style={{ 
               marginBottom: 12, 
               position: 'relative',
-              padding: 12
+              padding: 12,
+              cursor: 'pointer'
             }}
           >
             <div style={{ display: 'flex', gap: 12 }}>
@@ -242,7 +248,7 @@ export const MyTemplatesPanel = observer(({ store }) => {
                 {template.thumbnail ? (
                   <img 
                     src={template.thumbnail} 
-                    alt="" 
+                    alt={template.name}
                     style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                   />
                 ) : (
@@ -254,7 +260,7 @@ export const MyTemplatesPanel = observer(({ store }) => {
                     justifyContent: 'center',
                     color: '#666'
                   }}>
-                    <Icon icon="layout" />
+                    <Icon icon="layout-grid" size={24} />
                   </div>
                 )}
               </div>
@@ -275,8 +281,8 @@ export const MyTemplatesPanel = observer(({ store }) => {
                 </div>
                 <div style={{ fontSize: '11px', color: '#666', marginTop: 4 }}>
                   {new Date(template.created).toLocaleDateString()}
-                  {template.isDefault && <Tag intent="primary" style={{ marginLeft: 8 }}>Default</Tag>}
-                  {template.source === 'uploaded' && <Tag intent="warning" style={{ marginLeft: 8 }}>Uploaded</Tag>}
+                  {template.isDefault && <Tag intent="primary" minimal style={{ marginLeft: 8 }}>Default</Tag>}
+                  {template.source === 'uploaded' && <Tag intent="warning" minimal style={{ marginLeft: 8 }}>Uploaded</Tag>}
                 </div>
               </div>
 
@@ -313,7 +319,7 @@ export const MyTemplatesPanel = observer(({ store }) => {
 
         {templates.length === 0 && (
           <Callout intent="primary">
-            No templates yet. Save your current design or upload a JSON file.
+            No templates saved yet. Save your current design or upload a JSON file.
           </Callout>
         )}
       </div>
@@ -322,15 +328,16 @@ export const MyTemplatesPanel = observer(({ store }) => {
       <Dialog 
         isOpen={isSaveDialogOpen} 
         onClose={() => setIsSaveDialogOpen(false)}
-        title="Save as Template"
+        title="Save Current Design as Template"
       >
         <div className={Classes.DIALOG_BODY}>
-          <p>Save your current canvas design as a reusable template.</p>
+          <p>Give your current canvas a name to save it as a reusable template.</p>
           <InputGroup
             large
-            placeholder="Template name (e.g., Luxury Listing)"
+            placeholder="Template name (e.g. Luxury Apartment Listing)"
             value={templateName}
             onChange={e => setTemplateName(e.target.value)}
+            autoFocus
           />
         </div>
         <div className={Classes.DIALOG_FOOTER}>
@@ -345,20 +352,29 @@ export const MyTemplatesPanel = observer(({ store }) => {
       <Dialog
         isOpen={!!previewTemplate}
         onClose={() => setPreviewTemplate(null)}
-        title={previewTemplate?.name}
-        style={{ width: 'auto', maxWidth: '90vw' }}
+        title={previewTemplate?.name || 'Template Preview'}
+        style={{ width: 'auto', maxWidth: '90vw', maxHeight: '90vh' }}
       >
-        <div className={Classes.DIALOG_BODY}>
+        <div className={Classes.DIALOG_BODY} style={{ padding: 0 }}>
           {previewTemplate?.thumbnail ? (
             <img 
               src={previewTemplate.thumbnail} 
               alt="Template preview"
-              style={{ maxWidth: '100%', maxHeight: '60vh' }}
+              style={{ 
+                maxWidth: '100%', 
+                maxHeight: '60vh', 
+                objectFit: 'contain',
+                display: 'block',
+                margin: '0 auto'
+              }}
             />
           ) : (
-            <Callout>No preview available</Callout>
+            <Callout intent="warning" style={{ margin: 20 }}>
+              No preview available for this template
+            </Callout>
           )}
-          <div style={{ marginTop: 12 }}>
+
+          <div style={{ padding: 16 }}>
             <strong>Dimensions:</strong> {previewTemplate?.width}×{previewTemplate?.height}<br/>
             <strong>Elements:</strong> {previewTemplate?.elementCount}<br/>
             <strong>Created:</strong> {previewTemplate?.created && new Date(previewTemplate.created).toLocaleString()}
@@ -367,10 +383,15 @@ export const MyTemplatesPanel = observer(({ store }) => {
         <div className={Classes.DIALOG_FOOTER}>
           <div className={Classes.DIALOG_FOOTER_ACTIONS}>
             <Button onClick={() => setPreviewTemplate(null)}>Close</Button>
-            <Button intent="primary" onClick={() => {
-              loadTemplate(previewTemplate);
-              setPreviewTemplate(null);
-            }}>Load This Template</Button>
+            <Button 
+              intent="primary" 
+              onClick={() => {
+                loadTemplate(previewTemplate);
+                setPreviewTemplate(null);
+              }}
+            >
+              Load This Template
+            </Button>
           </div>
         </div>
       </Dialog>
@@ -382,7 +403,11 @@ export const MyTemplatesSection = {
   name: 'my-templates',
   Tab: (props) => (
     <SectionTab name="My Templates" {...props}>
-      <FaSave />
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2z" />
+        <path d="M12 7v10" />
+        <path d="M7 12h10" />
+      </svg>
     </SectionTab>
   ),
   Panel: MyTemplatesPanel,
