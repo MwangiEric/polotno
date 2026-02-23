@@ -40,6 +40,7 @@ const mySections = [
   RealEstateSection,            // Real Estate scraper & poster generator
 MyTemplatesSection,
   KtSection,
+  GSMSection,
 ];
 
 export default function Editor() {
