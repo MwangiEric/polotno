@@ -256,7 +256,7 @@ export const GsmPanel = observer(({ store }) => {
           </Button>
 
           <div style={{ marginTop: 12, padding: 12, background: '#f5f5f5', borderRadius: 4, fontSize: '12px', color: '#666' }}>
-            <strong>Tip:</strong> Name image elements "image1", "image2" in the Layers panel to auto-fill them.
+            <strong>Tip:</strong> Name image elements image1, image2 in the Layers panel to auto-fill them.
           </div>
         </div>
       )}
