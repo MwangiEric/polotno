@@ -20,6 +20,7 @@ import { PexelsSection } from './sections/pexels';
 import { RealEstateSection } from './sections/realestate'; // ← FIXED: Added missing import
 import { MyTemplatesSection } from './sections/my-templates';
 import { KtSection } from './sections/kt';
+import { GsmSection } from './sections/gsm';
 
 
 // Create Polotno store (use your real key from Vercel env)
@@ -40,6 +41,7 @@ const mySections = [
   RealEstateSection,            // Real Estate scraper & poster generator
 MyTemplatesSection,
   KtSection,
+  GsmSection,
 ];
 
 export default function Editor() {
