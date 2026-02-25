@@ -9,12 +9,12 @@ const CORS_PROXY = 'https://cors.ericmwangi13.workers.dev/?url=';
 const SEARXNG_BASE = 'https://far-paule-emw-a67bd497.koyeb.app/search';
 const WSRV = 'https://wsrv.nl/?url=';
 
-// Default enhancement text (user can disable via checkbox)
+// Enhancement text (appended when checkbox is on)
 const ENHANCED_QUERY = 'transparent PNG product cutout official OR white background OR isolated';
 
 export const ProductImagesSearchPanel = observer(({ store }) => {
   const [query, setQuery] = useState('');
-  const [useEnhanced, setUseEnhanced] = useState(true); // checkbox default: on
+  const [useEnhanced, setUseEnhanced] = useState(true); // default: enhanced on
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [images, setImages] = useState([]); // { url, isTransparent }
@@ -31,26 +31,33 @@ export const ProductImagesSearchPanel = observer(({ store }) => {
     setImages([]);
 
     try {
-      // Build final search query
+      // Build query
       let searchQuery = q;
       if (useEnhanced) {
         searchQuery += ` ${ENHANCED_QUERY}`;
       }
+      searchQuery = searchQuery.trim();
 
-      const searchUrl = `\( {SEARXNG_BASE}?q= \){encodeURIComponent(searchQuery)}&format=json&categories=images&safesearch=1`;
-      const proxyUrl = CORS_PROXY + encodeURIComponent(searchUrl);
+      const searchUrl = `${SEARXNG_BASE}?q=${encodeURIComponent(searchQuery)}&format=json&categories=images&safesearch=1`;
+      const proxyUrl = `${CORS_PROXY}${encodeURIComponent(searchUrl)}`;
+
+      console.log('Fetching from proxy:', proxyUrl); // debug
 
       const res = await fetch(proxyUrl);
-      if (!res.ok) throw new Error(`SearXNG error ${res.status}`);
+      if (!res.ok) {
+        const text = await res.text();
+        console.error('Proxy response:', res.status, text);
+        throw new Error(`SearXNG error ${res.status}`);
+      }
 
       const data = await res.json();
       const results = data.results || [];
 
-      // Extract & process images
+      // Get candidate images
       const candidates = results
         .filter(r => r.img_src && r.img_src.startsWith('http') && !r.img_src.includes('base64'))
         .map(r => r.img_src)
-        .slice(0, 20);
+        .slice(0, 20); // enough to analyze
 
       // Analyze transparency
       const analyzed = [];
@@ -73,12 +80,13 @@ export const ProductImagesSearchPanel = observer(({ store }) => {
           const tr = ctx.getImageData(canvas.width - 1, 0, 1, 1).data;
           const isTransparent = tl[3] === 0 || tr[3] === 0;
 
-          let wsrvUrl = `\( {WSRV} \){encodeURIComponent(src)}&w=800&h=800&fit=contain&output=png`;
+          // Clean wsrv wrapper
+          let wsrvUrl = `${WSRV}${encodeURIComponent(src)}&w=800&h=800&fit=contain&output=png`;
           if (isTransparent) wsrvUrl += '&bg=transparent';
 
           analyzed.push({ url: wsrvUrl, isTransparent });
         } catch (e) {
-          // skip broken images
+          console.warn('Image analysis failed:', src);
         }
       }
 
@@ -86,13 +94,13 @@ export const ProductImagesSearchPanel = observer(({ store }) => {
       analyzed.sort((a, b) => b.isTransparent - a.isTransparent);
 
       if (analyzed.length === 0) {
-        setError('No good images found. Try a different name or disable enhanced search.');
+        setError('No usable product images found. Try a different name.');
       } else {
         setImages(analyzed);
       }
     } catch (err) {
       console.error('Search error:', err);
-      setError('Failed to search. Check SearXNG or network.');
+      setError('Failed to search images. Check console or try again.');
     } finally {
       setLoading(false);
     }
@@ -170,7 +178,7 @@ export const ProductImagesSearchPanel = observer(({ store }) => {
       <Checkbox
         checked={useEnhanced}
         onChange={e => setUseEnhanced(e.target.checked)}
-        label="Use enhanced search (transparent / clean images)"
+        label="Enhanced search (prefer transparent / clean images)"
         style={{ marginBottom: 16 }}
       />
 
