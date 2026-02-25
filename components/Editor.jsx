@@ -21,6 +21,7 @@ import { RealEstateSection } from './sections/realestate'; // ← FIXED: Added m
 import { MyTemplatesSection } from './sections/my-templates';
 import { KtSection } from './sections/kt';
 import { GsmSection } from './sections/gsm';
+import { ProductImagesSearchSection } from './sections/product-images-search';
 
 
 // Create Polotno store (use your real key from Vercel env)
@@ -42,6 +43,7 @@ const mySections = [
 MyTemplatesSection,
   KtSection,
   GsmSection,
+ProductImagesSearchSection,
 ];
 
 export default function Editor() {
