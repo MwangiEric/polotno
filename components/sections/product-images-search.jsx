@@ -19,7 +19,7 @@ export const ProductImagesSearchPanel = observer(({ store }) => {
   const [siteFilter, setSiteFilter] = useState('all');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [results, setResults] = useState([]); // { url, name, price, source }
+  const [results, setResults] = useState([]);
 
   const searchProducts = async () => {
     const q = query.trim();
@@ -44,24 +44,20 @@ export const ProductImagesSearchPanel = observer(({ store }) => {
         const proxyUrl = `\( {CORS_PROXY} \){encodeURIComponent(apiUrl)}`;
 
         const res = await fetch(proxyUrl);
-        if (!res.ok) {
-          console.warn(`${store.name} failed: ${res.status}`);
-          continue;
-        }
+        if (!res.ok) continue;
 
         const products = await res.json();
 
         products.forEach(p => {
           if (p.images?.length > 0) {
             const img = p.images[0];
-            let src = img.src || img.thumbnail || '';
-
+            const src = img.src || img.thumbnail || '';
             if (src) {
               const wsrvUrl = `\( {WSRV} \){encodeURIComponent(src)}&w=800&h=800&fit=contain&output=png`;
 
               allResults.push({
                 url: wsrvUrl,
-                name: p.name || 'Unnamed Product',
+                name: p.name || 'Product',
                 price: p.sale_price || p.price || 'N/A',
                 source: store.name
               });
@@ -71,13 +67,12 @@ export const ProductImagesSearchPanel = observer(({ store }) => {
       }
 
       if (allResults.length === 0) {
-        setError('No matching products with images found. Try different keywords.');
+        setError('No products with images found. Try different keywords.');
       } else {
         setResults(allResults);
       }
     } catch (err) {
-      console.error('Multi-store search error:', err);
-      setError('Search failed: ' + (err.message || 'Network issue'));
+      setError('Search failed. Try again.');
     } finally {
       setLoading(false);
     }
@@ -96,7 +91,7 @@ export const ProductImagesSearchPanel = observer(({ store }) => {
       height: size,
       keepRatio: true,
       rotation: 0,
-      name: 'woo-product-image'
+      name: 'product-image'
     });
   };
 
@@ -133,14 +128,14 @@ export const ProductImagesSearchPanel = observer(({ store }) => {
       }
     });
 
-    alert('All images added as gallery on current page!');
+    alert('All images added as gallery!');
   };
 
   return (
     <div style={{ height: '100%', padding: 16, display: 'flex', flexDirection: 'column' }}>
-      <h3>Product Images (Multi-Store)</h3>
+      <h3>Product Images</h3>
       <p style={{ marginBottom: 16, color: '#aaa', fontSize: '14px' }}>
-        Search across Smartphones Kenya, Avechi, Elix Computers.
+        Search across 3 stores → click to add.
       </p>
 
       <div style={{ display: 'flex', gap: 12, marginBottom: 12, flexWrap: 'wrap' }}>
@@ -172,7 +167,7 @@ export const ProductImagesSearchPanel = observer(({ store }) => {
         loading={loading}
         disabled={loading || !query.trim()}
       >
-        {loading ? 'Searching...' : 'Search Products'}
+        {loading ? 'Searching...' : 'Search'}
       </Button>
 
       {error && (
@@ -189,7 +184,7 @@ export const ProductImagesSearchPanel = observer(({ store }) => {
                 Add All as Gallery
               </Button>
               <Tag intent="primary" minimal>
-                Click image to add to canvas • Download button per image
+                Click image to add • Download per image
               </Tag>
             </div>
 
