@@ -16,10 +16,10 @@ const STORES = [
 
 export const ProductImagesSearchPanel = observer(({ store }) => {
   const [query, setQuery] = useState('');
-  const [siteFilter, setSiteFilter] = useState('all');
+  const [siteFilter, setSiteFilter] = useState('smartphoneskenya');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [results, setResults] = useState([]);
+  const [results, setResults] = useState([]); // { url, name, price, source, specs }
 
   const searchProducts = async () => {
     const q = query.trim();
@@ -40,11 +40,14 @@ export const ProductImagesSearchPanel = observer(({ store }) => {
       const allResults = [];
 
       for (const store of selectedStores) {
-        const apiUrl = `\( {store.base}/wp-json/wc/v3/products?search= \){encodeURIComponent(q)}&per_page=10&status=publish`;
+        const apiUrl = `\( {store.base}/wp-json/wc/store/v1/products?search= \){encodeURIComponent(q)}&per_page=10`;
         const proxyUrl = `\( {CORS_PROXY} \){encodeURIComponent(apiUrl)}`;
 
         const res = await fetch(proxyUrl);
-        if (!res.ok) continue;
+        if (!res.ok) {
+          console.warn(`${store.name} failed: ${res.status}`);
+          continue;
+        }
 
         const products = await res.json();
 
@@ -52,14 +55,22 @@ export const ProductImagesSearchPanel = observer(({ store }) => {
           if (p.images?.length > 0) {
             const img = p.images[0];
             const src = img.src || img.thumbnail || '';
+
             if (src) {
               const wsrvUrl = `\( {WSRV} \){encodeURIComponent(src)}&w=800&h=800&fit=contain&output=png`;
+
+              // Extract specs from attributes
+              const specs = p.attributes?.map(attr => ({
+                name: attr.name,
+                value: attr.terms?.map(t => t.name).join(', ') || 'N/A'
+              })) || [];
 
               allResults.push({
                 url: wsrvUrl,
                 name: p.name || 'Product',
-                price: p.sale_price || p.price || 'N/A',
-                source: store.name
+                price: p.prices?.price ? `KSh ${(p.prices.price / 100).toLocaleString()}` : 'N/A',
+                source: store.name,
+                specs
               });
             }
           }
@@ -67,11 +78,12 @@ export const ProductImagesSearchPanel = observer(({ store }) => {
       }
 
       if (allResults.length === 0) {
-        setError('No products with images found. Try different keywords.');
+        setError('No matching products with images found. Try different keywords.');
       } else {
         setResults(allResults);
       }
     } catch (err) {
+      console.error('Search error:', err);
       setError('Search failed. Try again.');
     } finally {
       setLoading(false);
@@ -133,9 +145,9 @@ export const ProductImagesSearchPanel = observer(({ store }) => {
 
   return (
     <div style={{ height: '100%', padding: 16, display: 'flex', flexDirection: 'column' }}>
-      <h3>Product Images</h3>
+      <h3>Product Images Search</h3>
       <p style={{ marginBottom: 16, color: '#aaa', fontSize: '14px' }}>
-        Search across 3 stores → click to add.
+        Search across top Kenyan stores.
       </p>
 
       <div style={{ display: 'flex', gap: 12, marginBottom: 12, flexWrap: 'wrap' }}>
@@ -178,13 +190,13 @@ export const ProductImagesSearchPanel = observer(({ store }) => {
 
       {results.length > 0 && (
         <div style={{ marginTop: 24, flex: 1, overflowY: 'auto' }}>
-          <Callout intent="success" title={`${results.length} Images Found`}>
+          <Callout intent="success" title={`${results.length} Products Found`}>
             <div style={{ marginBottom: 16 }}>
               <Button intent="success" onClick={addAllAsGallery} style={{ marginRight: 12 }}>
                 Add All as Gallery
               </Button>
               <Tag intent="primary" minimal>
-                Click image to add • Download per image
+                Click image to add to canvas
               </Tag>
             </div>
 
@@ -237,7 +249,7 @@ export const ProductImagesSearchPanel = observer(({ store }) => {
                     minimal
                     style={{ position: 'absolute', top: 8, left: 8, fontSize: 10 }}
                   >
-                    {item.price !== 'N/A' ? `KSh ${item.price}` : 'N/A'}
+                    {item.price !== 'N/A' ? item.price : 'N/A'}
                   </Tag>
                   <Button
                     minimal
