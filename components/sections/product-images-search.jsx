@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { observer } from 'mobx-react-lite';
 import { SectionTab } from 'polotno/side-panel';
-import { InputGroup, Button, Callout, Spinner, Tag, Checkbox, HTMLSelect } from '@blueprintjs/core';
+import { InputGroup, Button, Callout, Spinner, Tag, HTMLSelect } from '@blueprintjs/core';
 
 const CORS_PROXY = 'https://cors.ericmwangi13.workers.dev/?url=';
 const WSRV = 'https://wsrv.nl/?url=';
@@ -53,20 +53,15 @@ export const ProductImagesSearchPanel = observer(({ store }) => {
 
         products.forEach(p => {
           if (p.images?.length > 0) {
-            // Prefer full src, fallback to thumbnail
             const img = p.images[0];
             let src = img.src || img.thumbnail || '';
 
             if (src) {
-              let wsrvUrl = `\( {WSRV} \){encodeURIComponent(src)}&w=800&h=800&fit=contain&output=png`;
-              // Bonus: transparent bg if filename suggests it
-              if (src.endsWith('.png') || src.includes('transparent')) {
-                wsrvUrl += '&bg=transparent';
-              }
+              const wsrvUrl = `\( {WSRV} \){encodeURIComponent(src)}&w=800&h=800&fit=contain&output=png`;
 
               allResults.push({
                 url: wsrvUrl,
-                name: p.name,
+                name: p.name || 'Unnamed Product',
                 price: p.sale_price || p.price || 'N/A',
                 source: store.name
               });
@@ -76,7 +71,7 @@ export const ProductImagesSearchPanel = observer(({ store }) => {
       }
 
       if (allResults.length === 0) {
-        setError('No matching products with images found. Try different keywords or check spelling.');
+        setError('No matching products with images found. Try different keywords.');
       } else {
         setResults(allResults);
       }
