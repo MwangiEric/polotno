@@ -305,8 +305,8 @@ export const JsonViewerPanel = observer(({ store }) => {
         </div>
       ) : (
         <Callout intent="primary" style={{ marginTop: 20 }}>
-          Click "Load Current Canvas JSON" to view raw state.<br /><br />
-          Or use "Export Template for Python" to prepare background.png + template.json for automation.
+          Click Load Current Canvas JSON to view raw state.<br /><br />
+          Or use Export Template for Python to prepare background.png + template.json for automation.
         </Callout>
       )}
 
