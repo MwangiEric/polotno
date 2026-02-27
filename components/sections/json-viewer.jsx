@@ -3,7 +3,18 @@
 import React, { useState } from 'react';
 import { observer } from 'mobx-react-lite';
 import { SectionTab } from 'polotno/side-panel';
-import { Button, Callout, InputGroup, Pre, Tooltip, Dialog, Classes, FormGroup, Spinner } from '@blueprintjs/core';
+import { 
+  Button, 
+  Callout, 
+  InputGroup, 
+  Pre, 
+  Dialog, 
+  Classes, 
+  FormGroup, 
+  Spinner, 
+  NonIdealState,
+  Divider
+} from '@blueprintjs/core';
 import FaCode from '@meronex/icons/fa/FaCode';
 
 export const JsonViewerPanel = observer(({ store }) => {
@@ -13,7 +24,6 @@ export const JsonViewerPanel = observer(({ store }) => {
   const [message, setMessage] = useState('');
   const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);
   const [templateName, setTemplateName] = useState('');
-  const [exportPreview, setExportPreview] = useState(null);
 
   const showRawJson = () => {
     const json = store.toJSON();
@@ -32,136 +42,72 @@ export const JsonViewerPanel = observer(({ store }) => {
   const startTemplateExport = () => {
     setIsExportDialogOpen(true);
     setTemplateName('');
-    setExportPreview(null);
     setMessage('');
   };
 
-  const prepareExportPreview = async () => {
+  const confirmExport = async () => {
     if (!templateName.trim()) {
-      setMessage('Please enter a template name');
+      setMessage('Template name is required.');
       return;
     }
 
     setLoading(true);
-    setMessage('Analyzing template...');
+    setMessage('Processing layers and generating background...');
 
     try {
       const page = store.activePage;
-      const textVars = [];
-      const imageVars = [];
-
-      // Find variable elements
-      const vars = page.children.filter(el => 
-        el.name && el.name.startsWith('{{') && el.name.endsWith('}}')
+      
+      // 1. Identify variables and remember their original visibility state
+      const variableElements = page.children.filter(el => 
+        el.name && typeof el.name === 'string' && el.name.startsWith('{{') && el.name.endsWith('}}')
       );
 
-      vars.forEach(el => {
-        const base = {
-          placeholder: el.name,
-          x: el.x,
-          y: el.y,
-          width: el.width,
-          height: el.height,
-          rotation: el.rotation || 0,
-          opacity: el.opacity || 1
-        };
+      const originalStates = variableElements.map(el => ({
+        el,
+        wasVisible: el.visible
+      }));
 
-        if (el.type === 'text') {
-          textVars.push({
-            ...base,
-            fontSize: el.fontSize || null,
-            fill: el.fill || null,
-            align: el.align || 'left',
-            text: el.text || '',
-            fontFamily: el.fontFamily || null,
-            fontStyle: el.fontStyle || 'normal',
-            fontWeight: el.fontWeight || 'normal',
-            lineHeight: el.lineHeight || 1,
-            letterSpacing: el.letterSpacing || 0
-          });
-        } else if (el.type === 'image') {
-          imageVars.push({
-            ...base,
-            keepRatio: el.keepRatio || true,
-            cropX: el.cropX || 0,
-            cropY: el.cropY || 0,
-            cropWidth: el.cropWidth || 1,
-            cropHeight: el.cropHeight || 1
-          });
-        }
-      });
+      // 2. Hide all variables to get a "Clean" background
+      variableElements.forEach(el => el.set({ visible: false }));
 
-      // Export clean background
-      const base64 = await store.toDataURL({
-        pageId: page.id,
-        mimeType: 'image/png',
-        quality: 1,
-        pixelRatio: 2
-      });
-
-      const preview = {
-        templateName: templateName.trim(),
-        canvas: { width: store.width, height: store.height },
-        backgroundBase64: base64.substring(0, 100) + '...' // truncated for preview
-      };
-
-      setExportPreview({ textVars, imageVars, preview });
-      setMessage('Preview ready. Click Export to save files.');
-
-    } catch (err) {
-      setMessage('Failed to prepare export: ' + err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const confirmExport = async () => {
-    setLoading(true);
-    setMessage('Exporting...');
-
-    try {
-      const page = store.activePage;
-      const vars = page.children.filter(el => 
-        el.name && el.name.startsWith('{{') && el.name.endsWith('}}')
-      );
-
-      // Hide variables
-      vars.forEach(el => el.set({ visible: false }));
-
-      // Export background
+      // 3. Export high-res background
       const base64PNG = await store.toDataURL({
         pageId: page.id,
         mimeType: 'image/png',
         quality: 1,
-        pixelRatio: 2
+        pixelRatio: 2 // High quality for Python processing
       });
 
-      // Restore visibility
-      vars.forEach(el => el.set({ visible: true }));
+      // 4. Restore visibility to EXACTLY what it was before
+      originalStates.forEach(state => {
+        state.el.set({ visible: state.wasVisible });
+      });
 
-      // Build full JSON
+      // 5. Build structured JSON with Layer/Z-Index info
       const textVars = [];
       const imageVars = [];
 
-      vars.forEach(el => {
+      // We use the page.children index to maintain relative layering in Python
+      variableElements.forEach((el) => {
         const base = {
           placeholder: el.name,
+          zIndex: page.children.indexOf(el), // Critical for correct overlapping
           x: el.x,
           y: el.y,
           width: el.width,
           height: el.height,
           rotation: el.rotation || 0,
-          opacity: el.opacity || 1
+          opacity: el.opacity !== undefined ? el.opacity : 1,
         };
 
         if (el.type === 'text') {
           textVars.push({
             ...base,
-            fontSize: el.fontSize || null,
-            fill: el.fill || null,
+            fontSize: el.fontSize,
+            fill: el.fill,
             align: el.align || 'left',
-            text: el.text || '',
-            fontFamily: el.fontFamily || null,
+            text: el.text,
+            fontFamily: el.fontFamily,
             fontStyle: el.fontStyle || 'normal',
             fontWeight: el.fontWeight || 'normal',
             lineHeight: el.lineHeight || 1,
@@ -170,24 +116,25 @@ export const JsonViewerPanel = observer(({ store }) => {
         } else if (el.type === 'image') {
           imageVars.push({
             ...base,
-            keepRatio: el.keepRatio || true,
+            keepRatio: el.keepRatio !== false,
             cropX: el.cropX || 0,
             cropY: el.cropY || 0,
             cropWidth: el.cropWidth || 1,
-            cropHeight: el.cropHeight || 1
+            cropHeight: el.cropHeight || 1,
+            src: el.src // Useful if Python needs to reference the original
           });
         }
       });
 
       const templateJSON = {
-        templateName: templateName.trim(),
+        meta: {
+          templateName: templateName.trim(),
+          exportDate: new Date().toISOString(),
+          app: "Polotno-Python-Bridge"
+        },
         canvas: {
           width: store.width,
           height: store.height
-        },
-        background: {
-          base64: base64PNG,
-          filename: 'background.png'
         },
         variables: {
           text: textVars,
@@ -195,28 +142,37 @@ export const JsonViewerPanel = observer(({ store }) => {
         }
       };
 
-      // Download JSON
+      // 6. Trigger Downloads
+      const safeName = templateName.trim().replace(/\s+/g, '_');
+      
+      // Download JSON (Metadata)
       const jsonBlob = new Blob([JSON.stringify(templateJSON, null, 2)], { type: 'application/json' });
       const jsonUrl = URL.createObjectURL(jsonBlob);
       const jsonLink = document.createElement('a');
       jsonLink.href = jsonUrl;
-      jsonLink.download = `${templateName.trim().replace(/\s+/g, '_')}_template.json`;
+      jsonLink.download = `${safeName}_config.json`;
+      document.body.appendChild(jsonLink);
       jsonLink.click();
+      document.body.removeChild(jsonLink);
       URL.revokeObjectURL(jsonUrl);
 
-      // Download background
-      const pngBlob = await fetch(base64PNG).then(r => r.blob());
+      // Download Background
+      const pngResponse = await fetch(base64PNG);
+      const pngBlob = await pngResponse.blob();
       const pngUrl = URL.createObjectURL(pngBlob);
       const pngLink = document.createElement('a');
       pngLink.href = pngUrl;
-      pngLink.download = 'background.png';
+      pngLink.download = `${safeName}_background.png`;
+      document.body.appendChild(pngLink);
       pngLink.click();
+      document.body.removeChild(pngLink);
       URL.revokeObjectURL(pngUrl);
 
-      setMessage(`Success! Exported "${templateName}" template.`);
+      setMessage(`Export Complete! Files: ${safeName}_config.json and background.png`);
+      setTimeout(() => setIsExportDialogOpen(false), 2000);
 
     } catch (err) {
-      console.error(err);
+      console.error('Export Error:', err);
       setMessage('Export failed: ' + err.message);
     } finally {
       setLoading(false);
@@ -228,140 +184,140 @@ export const JsonViewerPanel = observer(({ store }) => {
       height: '100%',
       display: 'flex',
       flexDirection: 'column',
-      padding: 16,
+      padding: '20px',
       overflow: 'hidden',
       width: '100%',
+      backgroundColor: '#f5f8fa'
     }}>
-      <h3 style={{ marginTop: 0 }}>JSON Viewer + Template Exporter</h3>
+      <h2 style={{ margin: '0 0 20px 0', fontSize: '18px' }}>Asset Pipeline</h2>
 
-      <div style={{ display: 'flex', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 20 }}>
         <Button
           intent="primary"
           large
+          fill
+          icon="code"
           onClick={showRawJson}
-          style={{ flex: 1, minWidth: 180 }}
         >
-          Load Current Canvas JSON
+          View Raw State
         </Button>
 
         <Button
           intent="success"
           large
+          fill
           icon="export"
           onClick={startTemplateExport}
-          style={{ flex: 1, minWidth: 220 }}
         >
-          Export Template for Python
+          Python Automation Export
         </Button>
 
-        <Button
-          minimal
-          icon="refresh"
-          onClick={() => setJsonText('')}
-        >
-          Clear JSON
-        </Button>
+        {jsonText && (
+           <Button
+           minimal
+           small
+           intent="danger"
+           icon="trash"
+           onClick={() => setJsonText('')}
+         >
+           Clear Viewer
+         </Button>
+        )}
       </div>
 
-      {jsonText && (
-        <div style={{ marginBottom: 12 }}>
-          <InputGroup
-            leftIcon="search"
-            placeholder='Filter JSON (type to search lines)...'
-            value={searchTerm}
-            onChange={e => setSearchTerm(e.target.value)}
-            rightElement={
-              searchTerm && (
-                <Button
-                  minimal
-                  icon="cross"
-                  onClick={() => setSearchTerm('')}
-                />
-              )
-            }
-          />
-        </div>
-      )}
+      <Divider />
 
       {jsonText ? (
-        <div style={{
-          flex: 1,
-          overflow: 'auto',
-          border: '1px solid #d8d8d8',
-          borderRadius: 4,
-          background: '#fafafa',
-          padding: 12,
-          fontSize: '13px',
-          lineHeight: 1.5,
-        }}>
-          <Pre style={{
-            margin: 0,
-            whiteSpace: 'pre-wrap',
-            wordBreak: 'break-all',
-            fontFamily: 'Consolas, monospace',
+        <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden', marginTop: 15 }}>
+          <InputGroup
+            leftIcon="search"
+            placeholder='Filter keys...'
+            value={searchTerm}
+            onChange={e => setSearchTerm(e.target.value)}
+            style={{ marginBottom: 10 }}
+          />
+          <div style={{
+            flex: 1,
+            overflow: 'auto',
+            border: '1px solid #ced9e0',
+            borderRadius: 4,
+            background: '#ffffff',
+            padding: 12,
           }}>
-            {filteredLines || '(no lines match your search)'}
-          </Pre>
+            <Pre style={{
+              margin: 0,
+              fontSize: '12px',
+              whiteSpace: 'pre-wrap',
+              wordBreak: 'break-all',
+              fontFamily: 'monospace',
+            }}>
+              {filteredLines || '// No matches found'}
+            </Pre>
+          </div>
         </div>
       ) : (
-        <Callout intent="primary" style={{ marginTop: 20 }}>
-          Click &quot;Load Current Canvas JSON&quot; to see the full raw state of the current design.
-          <br /><br />
-          Or use &quot;Export Template for Python&quot; to prepare background.png + template.json for automation.
-        </Callout>
+        <div style={{ marginTop: 40 }}>
+            <NonIdealState 
+                icon="document-share"
+                title="No Data Loaded"
+                description="Load the canvas state or prepare a Python export package."
+            />
+        </div>
       )}
 
       {/* Export Dialog */}
       <Dialog
         isOpen={isExportDialogOpen}
-        onClose={() => setIsExportDialogOpen(false)}
-        title="Export Template for Python"
+        onClose={() => !loading && setIsExportDialogOpen(false)}
+        title="Prepare Python Assets"
+        canOutsideClickClose={!loading}
       >
         <div className={Classes.DIALOG_BODY}>
-          <FormGroup label="Template Name" labelFor="template-name">
+          <FormGroup 
+            label="Internal Template Name" 
+            helperText="Used for file naming (e.g., 'Real_Estate_Banner')"
+          >
             <InputGroup
-              id="template-name"
               large
-              placeholder="e.g. Phone Basic v1"
+              placeholder="Enter name..."
               value={templateName}
               onChange={e => setTemplateName(e.target.value)}
-              autoFocus
+              disabled={loading}
             />
           </FormGroup>
 
-          <p style={{ marginTop: 16 }}>
-            This will:
-          </p>
-          <ul>
-            <li>Hide all {{variable}} elements</li>
-            <li>Export background.png (clean canvas without variables)</li>
-            <li>Export template.json with canvas size + exact positions of text & image variables</li>
-            <li>Restore visibility after export</li>
-          </ul>
+          <Callout intent="info" title="What happens next?">
+            <ul style={{ paddingLeft: 20, margin: '10px 0' }}>
+              <li>Variables tagged with <b>{"{{name}}"}</b> will be mapped.</li>
+              <li>A high-res background PNG (2x scale) will be generated.</li>
+              <li>A JSON config with precise coordinates will be created.</li>
+            </ul>
+          </Callout>
 
-          {loading && <Spinner size={30} style={{ margin: '20px auto', display: 'block' }} />}
-          {message && <Callout intent="primary" style={{ marginTop: 16 }}>{message}</Callout>}
+          {loading && (
+            <div style={{ textAlign: 'center', marginTop: 20 }}>
+                <Spinner size={40} />
+                <p style={{ marginTop: 10 }}>{message}</p>
+            </div>
+          )}
 
-          {exportPreview && (
-            <Callout intent="warning" style={{ marginTop: 16 }}>
-              Preview (truncated):
-              <pre style={{ marginTop: 8, fontSize: 12, overflowX: 'auto' }}>
-                {JSON.stringify(exportPreview, null, 2)}
-              </pre>
+          {!loading && message && (
+            <Callout intent={message.includes('Success') ? "success" : "danger"} style={{ marginTop: 16 }}>
+              {message}
             </Callout>
           )}
         </div>
 
         <div className={Classes.DIALOG_FOOTER}>
           <div className={Classes.DIALOG_FOOTER_ACTIONS}>
-            <Button onClick={() => setIsExportDialogOpen(false)}>Cancel</Button>
+            <Button onClick={() => setIsExportDialogOpen(false)} disabled={loading}>Cancel</Button>
             <Button 
-              intent="primary" 
+              intent="success" 
               onClick={confirmExport} 
               disabled={loading || !templateName.trim()}
               loading={loading}
             >
-              Export Now
+              Generate Assets
             </Button>
           </div>
         </div>
@@ -374,7 +330,7 @@ export const JsonViewerSection = {
   name: 'json-viewer',
   Tab: (props) => (
     <SectionTab name="JSON" {...props}>
-      <FaCode style={{ marginInline: 'auto' }} />
+      <FaCode />
     </SectionTab>
   ),
   Panel: JsonViewerPanel,
