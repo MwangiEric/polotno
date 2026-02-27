@@ -3,104 +3,86 @@
 import React, { useState } from 'react';
 import { observer } from 'mobx-react-lite';
 import { SectionTab } from 'polotno/side-panel';
-import { InputGroup, Button, Callout, Spinner, Tag, Checkbox } from '@blueprintjs/core';
+import { InputGroup, Button, Callout, Spinner, Tag, Checkbox, HTMLSelect } from '@blueprintjs/core';
 
 const CORS_PROXY = 'https://cors.ericmwangi13.workers.dev/?url=';
-const SEARXNG_BASE = 'https://far-paule-emw-a67bd497.koyeb.app/search';
 const WSRV = 'https://wsrv.nl/?url=';
 
-// Enhancement text (appended when checkbox is on)
-const ENHANCED_QUERY = 'transparent PNG product cutout official OR white background OR isolated';
+const STORES = [
+  { id: 'smartphoneskenya', name: 'Smartphones Kenya', base: 'https://smartphoneskenya.co.ke' },
+  { id: 'avechi', name: 'Avechi', base: 'https://avechi.co.ke' },
+  { id: 'elixcomputers', name: 'Elix Computers', base: 'https://elixcomputers.co.ke' }
+];
 
 export const ProductImagesSearchPanel = observer(({ store }) => {
   const [query, setQuery] = useState('');
-  const [useEnhanced, setUseEnhanced] = useState(true); // default: enhanced on
+  const [siteFilter, setSiteFilter] = useState('all');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [images, setImages] = useState([]); // { url, isTransparent }
+  const [results, setResults] = useState([]); // { url, name, price, source }
 
-  const searchImages = async () => {
+  const searchProducts = async () => {
     const q = query.trim();
     if (!q) {
-      setError('Enter a product name to search');
+      setError('Enter a product name or keyword');
       return;
     }
 
     setLoading(true);
     setError('');
-    setImages([]);
+    setResults([]);
+
+    const selectedStores = siteFilter === 'all' 
+      ? STORES 
+      : STORES.filter(s => s.id === siteFilter);
 
     try {
-      // Build query
-      let searchQuery = q;
-      if (useEnhanced) {
-        searchQuery += ` ${ENHANCED_QUERY}`;
-      }
-      searchQuery = searchQuery.trim();
+      const allResults = [];
 
-      const searchUrl = `${SEARXNG_BASE}?q=${encodeURIComponent(searchQuery)}&format=json&categories=images&safesearch=1`;
-      const proxyUrl = `${CORS_PROXY}${encodeURIComponent(searchUrl)}`;
+      for (const store of selectedStores) {
+        const apiUrl = `\( {store.base}/wp-json/wc/v3/products?search= \){encodeURIComponent(q)}&per_page=10&status=publish`;
+        const proxyUrl = `\( {CORS_PROXY} \){encodeURIComponent(apiUrl)}`;
 
-      console.log('Fetching from proxy:', proxyUrl); // debug
-
-      const res = await fetch(proxyUrl);
-      if (!res.ok) {
-        const text = await res.text();
-        console.error('Proxy response:', res.status, text);
-        throw new Error(`SearXNG error ${res.status}`);
-      }
-
-      const data = await res.json();
-      const results = data.results || [];
-
-      // Get candidate images
-      const candidates = results
-        .filter(r => r.img_src && r.img_src.startsWith('http') && !r.img_src.includes('base64'))
-        .map(r => r.img_src)
-        .slice(0, 20); // enough to analyze
-
-      // Analyze transparency
-      const analyzed = [];
-      for (const src of candidates) {
-        try {
-          const img = new Image();
-          img.crossOrigin = 'Anonymous';
-          img.src = CORS_PROXY + encodeURIComponent(src);
-          await new Promise((resolve, reject) => {
-            img.onload = resolve;
-            img.onerror = reject;
-          });
-
-          const canvas = document.createElement('canvas');
-          canvas.width = img.width;
-          canvas.height = img.height;
-          const ctx = canvas.getContext('2d');
-          ctx.drawImage(img, 0, 0);
-          const tl = ctx.getImageData(0, 0, 1, 1).data;
-          const tr = ctx.getImageData(canvas.width - 1, 0, 1, 1).data;
-          const isTransparent = tl[3] === 0 || tr[3] === 0;
-
-          // Clean wsrv wrapper
-          let wsrvUrl = `${WSRV}${encodeURIComponent(src)}&w=800&h=800&fit=contain&output=png`;
-          if (isTransparent) wsrvUrl += '&bg=transparent';
-
-          analyzed.push({ url: wsrvUrl, isTransparent });
-        } catch (e) {
-          console.warn('Image analysis failed:', src);
+        const res = await fetch(proxyUrl);
+        if (!res.ok) {
+          console.warn(`${store.name} failed: ${res.status}`);
+          continue;
         }
+
+        const products = await res.json();
+
+        products.forEach(p => {
+          if (p.images?.length > 0) {
+            // Prefer full src, fallback to thumbnail
+            const img = p.images[0];
+            let src = img.src || img.thumbnail || '';
+
+            if (src) {
+              let wsrvUrl = `\( {WSRV} \){encodeURIComponent(src)}&w=800&h=800&fit=contain&output=png`;
+              // Bonus: transparent bg if filename suggests it
+              if (src.endsWith('.png') || src.includes('transparent')) {
+                wsrvUrl += '&bg=transparent';
+              }
+
+              allResults.push({
+                url: wsrvUrl,
+                name: p.name,
+                price: p.sale_price || p.price || 'N/A',
+                source: store.name
+              });
+            }
+          }
+        });
       }
 
-      // Sort: transparent first
-      analyzed.sort((a, b) => b.isTransparent - a.isTransparent);
-
-      if (analyzed.length === 0) {
-        setError('No usable product images found. Try a different name.');
+      if (allResults.length === 0) {
+        setError('No matching products with images found. Try different keywords or check spelling.');
       } else {
-        setImages(analyzed);
+        setResults(allResults);
       }
     } catch (err) {
-      console.error('Search error:', err);
-      setError('Failed to search images. Check console or try again.');
+      console.error('Multi-store search error:', err);
+      setError('Search failed: ' + (err.message || 'Network issue'));
     } finally {
       setLoading(false);
     }
@@ -119,7 +101,7 @@ export const ProductImagesSearchPanel = observer(({ store }) => {
       height: size,
       keepRatio: true,
       rotation: 0,
-      name: 'searched-product-image'
+      name: 'woo-product-image'
     });
   };
 
@@ -136,10 +118,10 @@ export const ProductImagesSearchPanel = observer(({ store }) => {
     let x = 50;
     let y = 50;
 
-    images.forEach((img, i) => {
+    results.forEach((item, i) => {
       page.addElement({
         type: 'image',
-        src: img.url,
+        src: item.url,
         x,
         y,
         width: size,
@@ -156,40 +138,46 @@ export const ProductImagesSearchPanel = observer(({ store }) => {
       }
     });
 
-    alert('All images added as gallery!');
+    alert('All images added as gallery on current page!');
   };
 
   return (
     <div style={{ height: '100%', padding: 16, display: 'flex', flexDirection: 'column' }}>
-      <h3>Product Images Search</h3>
+      <h3>Product Images (Multi-Store)</h3>
       <p style={{ marginBottom: 16, color: '#aaa', fontSize: '14px' }}>
-        Type product name → search → click to add to canvas.
+        Search across Smartphones Kenya, Avechi, Elix Computers.
       </p>
 
-      <InputGroup
-        large
-        leftIcon="search"
-        placeholder="Samsung Galaxy S26 Ultra, OnePlus Buds 4, ..."
-        value={query}
-        onChange={e => setQuery(e.target.value)}
-        style={{ marginBottom: 8 }}
-      />
+      <div style={{ display: 'flex', gap: 12, marginBottom: 12, flexWrap: 'wrap' }}>
+        <InputGroup
+          large
+          leftIcon="search"
+          placeholder="Samsung Galaxy S26 Ultra, OnePlus Buds 4, ..."
+          value={query}
+          onChange={e => setQuery(e.target.value)}
+          style={{ flex: 1, minWidth: 280 }}
+        />
 
-      <Checkbox
-        checked={useEnhanced}
-        onChange={e => setUseEnhanced(e.target.checked)}
-        label="Enhanced search (prefer transparent / clean images)"
-        style={{ marginBottom: 16 }}
-      />
+        <HTMLSelect
+          value={siteFilter}
+          onChange={e => setSiteFilter(e.target.value)}
+          style={{ minWidth: 180 }}
+        >
+          <option value="all">All Stores</option>
+          {STORES.map(s => (
+            <option key={s.id} value={s.id}>{s.name}</option>
+          ))}
+        </HTMLSelect>
+      </div>
 
       <Button
         large
         intent="primary"
-        onClick={searchImages}
+        onClick={searchProducts}
         loading={loading}
         disabled={loading || !query.trim()}
       >
-        {loading ? 'Searching...' : 'Search Images'}
+        {loading ? 'Searching...' : 'Search Products'}
       </Button>
 
       {error && (
@@ -198,20 +186,20 @@ export const ProductImagesSearchPanel = observer(({ store }) => {
         </Callout>
       )}
 
-      {images.length > 0 && (
+      {results.length > 0 && (
         <div style={{ marginTop: 24, flex: 1, overflowY: 'auto' }}>
-          <Callout intent="success" title={`${images.length} Images Found`}>
+          <Callout intent="success" title={`${results.length} Images Found`}>
             <div style={{ marginBottom: 16 }}>
               <Button intent="success" onClick={addAllAsGallery} style={{ marginRight: 12 }}>
                 Add All as Gallery
               </Button>
               <Tag intent="primary" minimal>
-                Click image to add • Download button per image
+                Click image to add to canvas • Download button per image
               </Tag>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 16 }}>
-              {images.map((img, i) => (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 16 }}>
+              {results.map((item, i) => (
                 <div
                   key={i}
                   style={{
@@ -221,24 +209,45 @@ export const ProductImagesSearchPanel = observer(({ store }) => {
                     overflow: 'hidden',
                     boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
                     transition: 'transform 0.2s',
-                    border: img.isTransparent ? '2px solid #3EB489' : '1px solid #444'
+                    background: '#111'
                   }}
-                  onClick={() => addImageToCanvas(img.url)}
+                  onClick={() => addImageToCanvas(item.url)}
                   onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.04)'}
                   onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
                 >
                   <img
-                    src={img.url}
-                    alt={`Product image ${i + 1}`}
+                    src={item.url}
+                    alt={item.name}
                     style={{ width: '100%', height: 'auto', display: 'block' }}
-                    onError={e => e.target.src = 'https://via.placeholder.com/160?text=Error'}
+                    onError={e => e.target.src = 'https://via.placeholder.com/180?text=Image+Error'}
                   />
+                  <div style={{
+                    position: 'absolute',
+                    bottom: 0,
+                    left: 0,
+                    right: 0,
+                    background: 'rgba(0,0,0,0.7)',
+                    padding: '6px 8px',
+                    fontSize: 12,
+                    color: 'white',
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis'
+                  }}>
+                    {item.name.substring(0, 40)}...
+                  </div>
                   <Tag
-                    intent={img.isTransparent ? 'success' : 'default'}
                     minimal
                     style={{ position: 'absolute', top: 8, right: 8, fontSize: 10 }}
                   >
-                    {img.isTransparent ? 'Transparent' : 'Solid BG'}
+                    {item.source}
+                  </Tag>
+                  <Tag
+                    intent="primary"
+                    minimal
+                    style={{ position: 'absolute', top: 8, left: 8, fontSize: 10 }}
+                  >
+                    {item.price !== 'N/A' ? `KSh ${item.price}` : 'N/A'}
                   </Tag>
                   <Button
                     minimal
@@ -253,7 +262,7 @@ export const ProductImagesSearchPanel = observer(({ store }) => {
                     }}
                     onClick={(e) => {
                       e.stopPropagation();
-                      downloadImage(img.url, i);
+                      downloadImage(item.url, i);
                     }}
                   />
                 </div>
@@ -269,7 +278,7 @@ export const ProductImagesSearchPanel = observer(({ store }) => {
 export const ProductImagesSearchSection = {
   name: 'product-images-search',
   Tab: (props) => (
-    <SectionTab name="Product Images Search" {...props}>
+    <SectionTab name="Product Images" {...props}>
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
         <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
         <circle cx="8.5" cy="8.5" r="1.5" />
