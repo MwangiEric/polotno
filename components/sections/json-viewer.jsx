@@ -50,7 +50,7 @@ export const JsonViewerPanel = observer(({ store }) => {
       const textVars = [];
       const imageVars = [];
 
-      // Find variables
+      // Find variable elements
       const vars = page.children.filter(el => 
         el.name && el.name.startsWith('{{') && el.name.endsWith('}}')
       );
@@ -248,7 +248,7 @@ export const JsonViewerPanel = observer(({ store }) => {
           intent="success"
           large
           icon="export"
-          onClick={startExport}
+          onClick={startTemplateExport}
           style={{ flex: 1, minWidth: 220 }}
         >
           Export Template for Python
@@ -305,8 +305,9 @@ export const JsonViewerPanel = observer(({ store }) => {
         </div>
       ) : (
         <Callout intent="primary" style={{ marginTop: 20 }}>
-          Click Load Current Canvas JSON to view raw state.<br /><br />
-          Or use Export Template for Python to prepare background.png + template.json for automation.
+          Click &quot;Load Current Canvas JSON&quot; to see the full raw state of the current design.
+          <br /><br />
+          Or use &quot;Export Template for Python&quot; to prepare background.png + template.json for automation.
         </Callout>
       )}
 
@@ -333,13 +334,22 @@ export const JsonViewerPanel = observer(({ store }) => {
           </p>
           <ul>
             <li>Hide all {{variable}} elements</li>
-            <li>Export background.png (clean canvas)</li>
+            <li>Export background.png (clean canvas without variables)</li>
             <li>Export template.json with canvas size + exact positions of text & image variables</li>
             <li>Restore visibility after export</li>
           </ul>
 
           {loading && <Spinner size={30} style={{ margin: '20px auto', display: 'block' }} />}
           {message && <Callout intent="primary" style={{ marginTop: 16 }}>{message}</Callout>}
+
+          {exportPreview && (
+            <Callout intent="warning" style={{ marginTop: 16 }}>
+              Preview (truncated):
+              <pre style={{ marginTop: 8, fontSize: 12, overflowX: 'auto' }}>
+                {JSON.stringify(exportPreview, null, 2)}
+              </pre>
+            </Callout>
+          )}
         </div>
 
         <div className={Classes.DIALOG_FOOTER}>
