@@ -3,274 +3,266 @@
 import React, { useState } from 'react';
 import { observer } from 'mobx-react-lite';
 import { SectionTab } from 'polotno/side-panel';
-import { InputGroup, Button, Callout, Spinner, Tag, HTMLSelect } from '@blueprintjs/core';
+import { Button, Callout, TextArea, Tag } from '@blueprintjs/core';
 
 const CORS_PROXY = 'https://cors.ericmwangi13.workers.dev/?url=';
-const WSRV = 'https://wsrv.nl/?url=';
+const RSS_API_BASE = 'https://myrhubpy.vercel.app/smartphoneskenya/search/';
 
-const STORES = [
-  { id: 'smartphoneskenya', name: 'Smartphones Kenya', base: 'https://smartphoneskenya.co.ke' },
-  { id: 'avechi', name: 'Avechi', base: 'https://avechi.co.ke' },
-  { id: 'elixcomputers', name: 'Elix Computers', base: 'https://elixcomputers.co.ke' }
-];
+const generateId = () => Math.random().toString(36).substr(2, 9);
 
 export const ProductImagesSearchPanel = observer(({ store }) => {
-  const [query, setQuery] = useState('');
-  const [siteFilter, setSiteFilter] = useState('smartphoneskenya');
+  const [batchInput, setBatchInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [results, setResults] = useState([]); // { url, name, price, source, specs }
+  const [results, setResults] = useState([]);
+  const [feedback, setFeedback] = useState('');
 
-  const searchProducts = async () => {
-    const q = query.trim();
-    if (!q) {
-      setError('Enter a product name or keyword');
+  const searchSingle = async (q) => {
+    if (!q.trim()) return null;
+
+    try {
+      const apiUrl = `${RSS_API_BASE}${encodeURIComponent(q.trim())}.json`;
+      const proxyUrl = `${CORS_PROXY}${encodeURIComponent(apiUrl)}`;
+
+      const res = await fetch(proxyUrl);
+      if (!res.ok) return null;
+
+      const data = await res.json();
+      const item = data.items?.[0]?.extra;
+      if (!item) return null;
+
+      return {
+        name: item.product_name || q.trim(),
+        price: item.price || 'N/A',
+        images: [item.image1, item.image2, item.image3, item.image4].filter(Boolean),
+        specs: [
+          { label: 'Display', value: item.spec1 || 'N/A' },
+          { label: 'RAM', value: item.spec2 || 'N/A' },
+          { label: 'Storage', value: item.spec3 || 'N/A' },
+          { label: 'OS', value: item.spec4 || 'N/A' }
+        ].filter(s => s.value !== 'N/A')
+      };
+    } catch (err) {
+      console.error('Search error:', err);
+      return null;
+    }
+  };
+
+  const createCleanPage = (templatePage) => {
+    // Deep clone template page data - breaks all references
+    const templateData = JSON.parse(JSON.stringify(templatePage.toJSON()));
+
+    // Create new page
+    const newPage = store.addPage({
+      width: templateData.width,
+      height: templateData.height,
+      background: templateData.background
+    });
+
+    // Add elements with completely fresh data
+    templateData.children.forEach(child => {
+      // Deep clone again to ensure no shared references
+      const elementData = JSON.parse(JSON.stringify(child));
+      
+      // New ID
+      elementData.id = generateId();
+      
+      // Clear image src to prevent auto-loading
+      if (elementData.type === 'image') {
+        elementData.src = '';
+      }
+      
+      newPage.addElement(elementData);
+    });
+
+    return newPage;
+  };
+
+  const fillPage = async (page, item) => {
+    const textMap = {
+      '{{name}}': item.name,
+      '{{price}}': item.price,
+      '{{spec1}}': item.specs[0] ? `${item.specs[0].label}: ${item.specs[0].value}` : '',
+      '{{spec2}}': item.specs[1] ? `${item.specs[1].label}: ${item.specs[1].value}` : '',
+      '{{spec3}}': item.specs[2] ? `${item.specs[2].label}: ${item.specs[2].value}` : '',
+      '{{spec4}}': item.specs[3] ? `${item.specs[3].label}: ${item.specs[3].value}` : '',
+    };
+
+    const imageMap = {
+      'image1': item.images[0] || '',
+      'image2': item.images[1] || '',
+      'image3': item.images[2] || '',
+      'image4': item.images[3] || '',
+    };
+
+    // Fill text elements
+    page.children.forEach(el => {
+      if (el.type !== 'text') return;
+      
+      let newText = el.text || '';
+      let changed = false;
+
+      Object.entries(textMap).forEach(([key, value]) => {
+        if (newText.includes(key)) {
+          const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          newText = newText.replace(new RegExp(escaped, 'gi'), value);
+          changed = true;
+        }
+      });
+
+      if (changed) {
+        el.set({ text: newText });
+      }
+    });
+
+    // Fill images sequentially
+    const imageElements = [];
+    page.children.forEach(el => {
+      if (el.type !== 'image') return;
+      
+      const match = el.name?.match(/image(\d+)/i);
+      if (!match) return;
+      
+      const key = `image${match[1]}`;
+      const src = imageMap[key];
+      
+      if (src) {
+        imageElements.push({ el, src });
+      }
+    });
+
+    for (let i = 0; i < imageElements.length; i++) {
+      const { el, src } = imageElements[i];
+      
+      // Delay between images (skip delay for first)
+      if (i > 0) {
+        await new Promise(r => setTimeout(r, 1000));
+      }
+      
+      el.set({ 
+        src, 
+        visible: true,
+        cropX: 0,
+        cropY: 0,
+        cropWidth: 1,
+        cropHeight: 1
+      });
+    }
+  };
+
+  const handleBatchFill = async () => {
+    const lines = batchInput.trim().split('\n').filter(Boolean);
+    if (lines.length === 0) {
+      setError('Paste at least one product name');
       return;
     }
 
     setLoading(true);
     setError('');
+    setFeedback(`Starting batch (${lines.length} products)...`);
     setResults([]);
 
-    const selectedStores = siteFilter === 'all' 
-      ? STORES 
-      : STORES.filter(s => s.id === siteFilter);
+    const filled = [];
+    const templatePage = store.activePage;
 
-    try {
-      const allResults = [];
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim();
+      setFeedback(`Searching: "${line}" (${i + 1}/${lines.length})...`);
 
-      for (const store of selectedStores) {
-        const apiUrl = `\( {store.base}/wp-json/wc/store/v1/products?search= \){encodeURIComponent(q)}&per_page=10`;
-        const proxyUrl = `\( {CORS_PROXY} \){encodeURIComponent(apiUrl)}`;
-
-        const res = await fetch(proxyUrl);
-        if (!res.ok) {
-          console.warn(`${store.name} failed: ${res.status}`);
-          continue;
-        }
-
-        const products = await res.json();
-
-        products.forEach(p => {
-          if (p.images?.length > 0) {
-            const img = p.images[0];
-            const src = img.src || img.thumbnail || '';
-
-            if (src) {
-              const wsrvUrl = `\( {WSRV} \){encodeURIComponent(src)}&w=800&h=800&fit=contain&output=png`;
-
-              // Extract specs from attributes
-              const specs = p.attributes?.map(attr => ({
-                name: attr.name,
-                value: attr.terms?.map(t => t.name).join(', ') || 'N/A'
-              })) || [];
-
-              allResults.push({
-                url: wsrvUrl,
-                name: p.name || 'Product',
-                price: p.prices?.price ? `KSh ${(p.prices.price / 100).toLocaleString()}` : 'N/A',
-                source: store.name,
-                specs
-              });
-            }
-          }
-        });
+      const item = await searchSingle(line);
+      if (!item) {
+        setFeedback(`Skipped "${line}" - no match (${i + 1}/${lines.length})`);
+        continue;
       }
 
-      if (allResults.length === 0) {
-        setError('No matching products with images found. Try different keywords.');
-      } else {
-        setResults(allResults);
+      // Create clean page from template
+      const newPage = createCleanPage(templatePage);
+      
+      // Select and fill
+      store.selectPage(newPage.id);
+      await fillPage(newPage, item);
+      
+      filled.push(item);
+      setFeedback(`Filled: ${item.name} (${i + 1}/${lines.length})`);
+      
+      // Small delay between products
+      if (i < lines.length - 1) {
+        await new Promise(r => setTimeout(r, 500));
       }
-    } catch (err) {
-      console.error('Search error:', err);
-      setError('Search failed. Try again.');
-    } finally {
-      setLoading(false);
     }
-  };
 
-  const addImageToCanvas = (imageUrl) => {
-    const page = store.activePage;
-    const size = Math.min(store.width * 0.7, store.height * 0.7);
-
-    page.addElement({
-      type: 'image',
-      src: imageUrl,
-      x: (store.width - size) / 2,
-      y: (store.height - size) / 2,
-      width: size,
-      height: size,
-      keepRatio: true,
-      rotation: 0,
-      name: 'product-image'
-    });
-  };
-
-  const downloadImage = (imageUrl, index) => {
-    const link = document.createElement('a');
-    link.href = imageUrl;
-    link.download = `product-image-${index + 1}.png`;
-    link.click();
-  };
-
-  const addAllAsGallery = () => {
-    const page = store.activePage;
-    const size = 300;
-    let x = 50;
-    let y = 50;
-
-    results.forEach((item, i) => {
-      page.addElement({
-        type: 'image',
-        src: item.url,
-        x,
-        y,
-        width: size,
-        height: size,
-        keepRatio: true,
-        rotation: 0,
-        name: `gallery-image-${i + 1}`
-      });
-
-      x += size + 20;
-      if (x + size > store.width - 50) {
-        x = 50;
-        y += size + 20;
-      }
-    });
-
-    alert('All images added as gallery!');
+    setResults(filled);
+    setLoading(false);
+    setFeedback(`Done! Filled ${filled.length} of ${lines.length} posters.`);
   };
 
   return (
-    <div style={{ height: '100%', padding: 16, display: 'flex', flexDirection: 'column' }}>
-      <h3>Product Images Search</h3>
-      <p style={{ marginBottom: 16, color: '#aaa', fontSize: '14px' }}>
-        Search across top Kenyan stores.
+    <div style={{ height: '100%', padding: 16, background: '#1a1a1b', color: 'white', display: 'flex', flexDirection: 'column' }}>
+      <h3 style={{ margin: 0 }}>Batch Poster Filler</h3>
+      <p style={{ fontSize: 11, color: '#888', marginBottom: 15 }}>
+        Paste list (one per line) → auto-creates & fills posters
       </p>
 
-      <div style={{ display: 'flex', gap: 12, marginBottom: 12, flexWrap: 'wrap' }}>
-        <InputGroup
-          large
-          leftIcon="search"
-          placeholder="Samsung Galaxy S26 Ultra, OnePlus Buds 4, ..."
-          value={query}
-          onChange={e => setQuery(e.target.value)}
-          style={{ flex: 1, minWidth: 280 }}
-        />
-
-        <HTMLSelect
-          value={siteFilter}
-          onChange={e => setSiteFilter(e.target.value)}
-          style={{ minWidth: 180 }}
-        >
-          <option value="all">All Stores</option>
-          {STORES.map(s => (
-            <option key={s.id} value={s.id}>{s.name}</option>
-          ))}
-        </HTMLSelect>
-      </div>
-
-      <Button
+      <TextArea
         large
-        intent="primary"
-        onClick={searchProducts}
-        loading={loading}
-        disabled={loading || !query.trim()}
+        fill
+        growVertically
+        placeholder="One product per line:\nSamsung Galaxy S24 Ultra\nOnePlus Buds 4\niPhone 16 Pro Max"
+        value={batchInput}
+        onChange={e => setBatchInput(e.target.value)}
+        style={{ minHeight: 140, resize: 'vertical', marginBottom: 12 }}
+      />
+
+      <Button 
+        large 
+        intent="primary" 
+        onClick={handleBatchFill} 
+        loading={loading} 
+        disabled={loading}
+        style={{ marginBottom: 16 }}
       >
-        {loading ? 'Searching...' : 'Search'}
+        {loading ? 'Processing...' : 'Start Batch Fill'}
       </Button>
 
       {error && (
-        <Callout intent="danger" style={{ marginTop: 16 }}>
+        <Callout intent="danger" style={{ marginBottom: 12 }}>
           {error}
+        </Callout>
+      )}
+      
+      {feedback && (
+        <Callout intent="success" style={{ marginBottom: 12 }}>
+          {feedback}
         </Callout>
       )}
 
       {results.length > 0 && (
-        <div style={{ marginTop: 24, flex: 1, overflowY: 'auto' }}>
-          <Callout intent="success" title={`${results.length} Products Found`}>
-            <div style={{ marginBottom: 16 }}>
-              <Button intent="success" onClick={addAllAsGallery} style={{ marginRight: 12 }}>
-                Add All as Gallery
-              </Button>
-              <Tag intent="primary" minimal>
-                Click image to add to canvas
-              </Tag>
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 16 }}>
-              {results.map((item, i) => (
-                <div
-                  key={i}
-                  style={{
-                    position: 'relative',
-                    cursor: 'pointer',
-                    borderRadius: 12,
-                    overflow: 'hidden',
-                    boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
-                    transition: 'transform 0.2s',
-                    background: '#111'
-                  }}
-                  onClick={() => addImageToCanvas(item.url)}
-                  onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.04)'}
-                  onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
-                >
-                  <img
-                    src={item.url}
-                    alt={item.name}
-                    style={{ width: '100%', height: 'auto', display: 'block' }}
-                    onError={e => e.target.src = 'https://via.placeholder.com/180?text=Image+Error'}
-                  />
-                  <div style={{
-                    position: 'absolute',
-                    bottom: 0,
-                    left: 0,
-                    right: 0,
-                    background: 'rgba(0,0,0,0.7)',
-                    padding: '6px 8px',
-                    fontSize: 12,
-                    color: 'white',
-                    whiteSpace: 'nowrap',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis'
-                  }}>
-                    {item.name.substring(0, 40)}...
-                  </div>
-                  <Tag
-                    minimal
-                    style={{ position: 'absolute', top: 8, right: 8, fontSize: 10 }}
-                  >
-                    {item.source}
-                  </Tag>
-                  <Tag
-                    intent="primary"
-                    minimal
-                    style={{ position: 'absolute', top: 8, left: 8, fontSize: 10 }}
-                  >
-                    {item.price !== 'N/A' ? item.price : 'N/A'}
-                  </Tag>
-                  <Button
-                    minimal
-                    small
-                    icon="download"
-                    style={{
-                      position: 'absolute',
-                      bottom: 8,
-                      right: 8,
-                      background: 'rgba(0,0,0,0.6)',
-                      color: 'white'
-                    }}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      downloadImage(item.url, i);
-                    }}
-                  />
+        <div style={{ flex: 1, overflowY: 'auto' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 10 }}>
+            {results.map((item, i) => (
+              <div 
+                key={i}
+                style={{ 
+                  background: '#2d2d2e', 
+                  padding: 8, 
+                  borderRadius: 6, 
+                  border: '1px solid #444'
+                }}
+              >
+                <img 
+                  src={item.images[0]} 
+                  style={{ width: '100%', height: 100, objectFit: 'contain', borderRadius: 4 }} 
+                  alt="" 
+                />
+                <div style={{ fontSize: 10, marginTop: 6, height: 28, overflow: 'hidden', lineHeight: 1.3 }}>
+                  {item.name}
                 </div>
-              ))}
-            </div>
-          </Callout>
+                <Tag minimal intent="success" style={{ fontSize: 9, marginTop: 4 }}>
+                  {item.price}
+                </Tag>
+              </div>
+            ))}
+          </div>
         </div>
       )}
     </div>
@@ -280,11 +272,10 @@ export const ProductImagesSearchPanel = observer(({ store }) => {
 export const ProductImagesSearchSection = {
   name: 'product-images-search',
   Tab: (props) => (
-    <SectionTab name="Product Images" {...props}>
+    <SectionTab name="Batch Fill" {...props}>
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-        <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-        <circle cx="8.5" cy="8.5" r="1.5" />
-        <polyline points="21 15 16 10 5 21" />
+        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
       </svg>
     </SectionTab>
   ),
