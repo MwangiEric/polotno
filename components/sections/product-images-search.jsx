@@ -10,7 +10,6 @@ const RSS_API_BASE = 'https://myrhubpy.vercel.app/smartphoneskenya/search/';
 
 const generateId = () => Math.random().toString(36).substr(2, 9);
 
-// Helper: Wait for image to actually load
 const loadImage = (src) => new Promise((resolve, reject) => {
   const img = new Image();
   img.onload = () => resolve(src);
@@ -37,42 +36,76 @@ export const ProductImagesSearchPanel = observer(({ store }) => {
     if (!query.trim()) return null;
 
     try {
-      const apiUrl = `${RSS_API_BASE}${encodeURIComponent(query.trim())}.json`;
+      // FIX: Only encode the query parameter, not the entire URL
+      // The CORS proxy expects: ?url=https://api.com/endpoint/ENCODED_QUERY.json
+      const encodedQuery = encodeURIComponent(query.trim());
+      const apiUrl = `${RSS_API_BASE}${encodedQuery}.json`;
+      
+      // Don't double-encode the API URL - just pass it directly to proxy
       const proxyUrl = `${CORS_PROXY}${apiUrl}`;
+      
+      console.log('Fetching:', proxyUrl);
+      console.log('Target API:', apiUrl);
 
       const res = await fetch(proxyUrl);
+      
       if (!res.ok) {
-        console.error('API error:', res.status, await res.text());
+        const errorText = await res.text();
+        console.error('API error:', res.status, errorText);
         return null;
       }
 
       const data = await res.json();
+      console.log('API Response:', data);
       
-      const searchLower = query.toLowerCase();
-      let item = data.items?.find(i => 
-        i.extra?.product_name?.toLowerCase().includes(searchLower)
+      if (!data.items || data.items.length === 0) {
+        console.log('No items found');
+        return null;
+      }
+
+      // Matching logic
+      const searchLower = query.toLowerCase().trim();
+      let matchedItem = null;
+      
+      // Try exact match first
+      matchedItem = data.items.find(i => 
+        i.extra?.product_name?.toLowerCase().trim() === searchLower
       )?.extra;
       
-      if (!item) {
-        item = data.items?.[0]?.extra;
+      // Try includes match
+      if (!matchedItem) {
+        matchedItem = data.items.find(i => 
+          i.extra?.product_name?.toLowerCase().includes(searchLower)
+        )?.extra;
       }
       
-      if (!item) return null;
+      // Fallback to first item
+      if (!matchedItem) {
+        matchedItem = data.items[0]?.extra;
+        console.log('No match, using first item:', matchedItem?.product_name);
+      }
+      
+      if (!matchedItem) return null;
 
-      const finalPrice = providedPrice || item.price || 'N/A';
+      const finalPrice = providedPrice || matchedItem.price || 'N/A';
 
       return {
-        name: item.product_name || query.trim(),
+        name: matchedItem.product_name || query.trim(),
         price: finalPrice,
-        images: [item.image1, item.image2, item.image3, item.image4].filter(Boolean),
-        // Return raw spec values without labels - template uses icons
+        images: [
+          matchedItem.image1, 
+          matchedItem.image2, 
+          matchedItem.image3, 
+          matchedItem.image4
+        ].filter(Boolean),
         specs: [
-          item.spec1 || '',  // Display value only
-          item.spec2 || '',  // RAM value only  
-          item.spec3 || '',  // Storage value only
-          item.spec4 || ''   // OS value only
+          matchedItem.spec1 || '',  
+          matchedItem.spec2 || '',  
+          matchedItem.spec3 || '',  
+          matchedItem.spec4 || ''   
         ]
       };
+      
     } catch (err) {
       console.error('Search error:', err);
       return null;
@@ -84,7 +117,7 @@ export const ProductImagesSearchPanel = observer(({ store }) => {
     
     const uploadedImages = {};
     templatePage.children.forEach((el, idx) => {
-      if (el.type === 'image' && !/^image\d+$/i.test(el.name)) {
+      if (el.type === 'image' && !/^image\d+$/i.test(el.name) && !/\{\{image\d+\}\}/i.test(el.name)) {
         uploadedImages[idx] = el.src;
       }
     });
@@ -100,7 +133,10 @@ export const ProductImagesSearchPanel = observer(({ store }) => {
       elementData.id = generateId();
 
       if (elementData.type === 'image') {
-        if (/^image\d+$/i.test(elementData.name)) {
+        const isTemplateImage = /^image\d+$/i.test(elementData.name) || 
+                               /\{\{image\d+\}\}/i.test(elementData.name);
+        
+        if (isTemplateImage) {
           elementData.src = '';
           elementData.cropX = 0;
           elementData.cropY = 0;
@@ -118,7 +154,7 @@ export const ProductImagesSearchPanel = observer(({ store }) => {
   };
 
   const fillPage = async (page, item) => {
-    // Case-insensitive variable mapping - only values, no labels
+    // Case-insensitive variable mapping
     const textMap = {
       '{{name}}': item.name,
       '{{price}}': item.price,
@@ -126,7 +162,7 @@ export const ProductImagesSearchPanel = observer(({ store }) => {
       '{{spec2}}': item.specs[1] || '',
       '{{spec3}}': item.specs[2] || '',
       '{{spec4}}': item.specs[3] || '',
-      // Case-insensitive variants
+      // Uppercase variants
       '{{NAME}}': item.name,
       '{{PRICE}}': item.price,
       '{{SPEC1}}': item.specs[0] || '',
@@ -142,7 +178,6 @@ export const ProductImagesSearchPanel = observer(({ store }) => {
       let changed = false;
 
       Object.keys(textMap).forEach(key => {
-        // Case-insensitive regex replacement
         const regex = new RegExp(key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
         if (regex.test(newText)) {
           newText = newText.replace(regex, textMap[key]);
@@ -155,14 +190,14 @@ export const ProductImagesSearchPanel = observer(({ store }) => {
       }
     });
 
-    // Handle {{image1}}, {{image2}}, etc. - case insensitive
+    // Handle {{image1}}, {{image2}}, etc.
     const imageElements = [];
     page.children.forEach(el => {
       if (el.type !== 'image') return;
       
-      // Match {{image1}}, {{IMAGE1}}, {{Image1}}, etc.
-      const textContent = el.name || '';
-      const match = textContent.match(/\{\{image(\d+)\}\}/i);
+      const name = el.name || '';
+      const match = name.match(/\{\{image(\d+)\}\}/i) || name.match(/^image(\d+)$/i);
+      
       if (!match) return;
       
       const idx = parseInt(match[1]) - 1;
