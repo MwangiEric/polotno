@@ -68,10 +68,46 @@ export const GsmPanel = observer(({ store }) => {
     }
   };
 
-  const fillAndOptionallyExport = async (deviceData, customPrice = null, customSpecs = null) => {
-    const page = store.activePage;
-    if (!page || !deviceData) return 0;
+  const duplicateTemplatePage = (templatePage) => {
+    const newPage = store.addPage({
+      width: templatePage.width,
+      height: templatePage.height,
+      background: templatePage.background || '#ffffff'
+    });
 
+    templatePage.children.forEach(child => {
+      const cleanData = {
+        type: child.type,
+        name: child.name,
+        x: child.x,
+        y: child.y,
+        width: child.width,
+        height: child.height,
+        rotation: child.rotation || 0,
+        opacity: child.opacity || 1,
+        visible: child.visible !== false
+      };
+
+      if (child.type === 'text') {
+        cleanData.text = child.text || '';
+        cleanData.fontSize = child.fontSize;
+        cleanData.fill = child.fill;
+        cleanData.align = child.align || 'left';
+        cleanData.fontFamily = child.fontFamily;
+      }
+
+      if (child.type === 'image') {
+        cleanData.src = '';
+        cleanData.keepRatio = child.keepRatio !== false;
+      }
+
+      newPage.addElement(cleanData);
+    });
+
+    return newPage;
+  };
+
+  const fillPage = async (page, deviceData, customPrice = null, customSpecs = null) => {
     let price = customPrice || 'N/A';
     let specs = customSpecs || deviceData.specs || [];
 
@@ -91,77 +127,77 @@ export const GsmPanel = observer(({ store }) => {
 
     let updatedCount = 0;
 
+    // Fill text immediately
     page.children.forEach(el => {
       if (el.type === 'text') {
-        let currentText = (el.text || '').trim();
-        let newText = currentText;
+        let txt = el.text || '';
+        let changed = false;
 
-        Object.entries(dataMap).forEach(([placeholder, value]) => {
-          const escaped = placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-          newText = newText.replace(new RegExp(escaped, 'gi'), value || '');
+        Object.keys(dataMap).forEach(k => {
+          if (!k.includes('image') && (el.name === k || txt.includes(k))) {
+            txt = txt.replace(new RegExp(k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'), dataMap[k]);
+            changed = true;
+          }
         });
 
-        if (newText !== currentText) {
-          el.set({ text: newText });
+        if (changed) {
+          el.set({ text: txt });
           updatedCount++;
-        }
-      }
-
-      if (el.type === 'image') {
-        const match = el.name?.match(/image(\d+)/i);
-        if (match) {
-          const index = parseInt(match[1], 10) - 1;
-          if (deviceData.images[index]) {
-            const newSrc = deviceData.images[index];
-
-            const currentWidth = el.width || 300;
-            const currentHeight = el.height || 300;
-            const currentX = el.x || 0;
-            const currentY = el.y || 0;
-
-            el.set({
-              src: newSrc,
-              width: currentWidth,
-              height: currentHeight,
-              x: currentX,
-              y: currentY,
-              rotation: 0,
-              visible: true
-            });
-
-            updatedCount++;
-          }
         }
       }
     });
 
-    if (autoDownload) {
-      try {
-        await new Promise(resolve => setTimeout(resolve, 1500));
+    // Fill images sequentially (1 second delay each)
+    const imageElements = page.children.filter(el => el.type === 'image');
 
-        const safeName = (deviceData.name || 'product')
-          .replace(/[^a-z0-9\s-]/gi, '')
-          .replace(/\s+/g, '-')
-          .toLowerCase();
+    for (let i = 0; i < imageElements.length; i++) {
+      const el = imageElements[i];
 
-        const url = await store.toDataURL({
-          pageId: page.id,
-          mimeType: 'image/png',
-          quality: 1
+      let srcToSet = null;
+      Object.keys(dataMap).forEach(k => {
+        if (k.includes('image') && el.name === k) {
+          srcToSet = dataMap[k];
+        }
+      });
+
+      if (srcToSet) {
+        await new Promise(resolve => {
+          setTimeout(() => {
+            el.set({ src: srcToSet });
+            updatedCount++;
+            resolve();
+          }, i * 1000);
         });
-
-        const link = document.createElement('a');
-        link.download = safeName + '.png';
-        link.href = url;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-      } catch (err) {
-        console.warn('Auto-export failed:', err);
       }
     }
 
     return updatedCount;
+  };
+
+  const downloadPage = async (page, productName) => {
+    try {
+      await new Promise(r => setTimeout(r, 1500));
+
+      const safeName = (productName || 'product')
+        .replace(/[^a-z0-9\s-]/gi, '')
+        .replace(/\s+/g, '-')
+        .toLowerCase();
+
+      const url = await store.toDataURL({
+        pageId: page.id,
+        mimeType: 'image/png',
+        quality: 1
+      });
+
+      const link = document.createElement('a');
+      link.download = safeName + '.png';
+      link.href = url;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (err) {
+      console.warn('Auto-download failed:', err);
+    }
   };
 
   const handleSingleFill = async () => {
@@ -186,7 +222,15 @@ export const GsmPanel = observer(({ store }) => {
       return;
     }
 
-    const updated = await fillAndOptionallyExport(deviceData, 'KSh ' + Number(price).toLocaleString());
+    const newPage = duplicateTemplatePage(store.activePage);
+    store.selectPage(newPage.id);
+
+    const updated = await fillPage(newPage, deviceData, 'KSh ' + Number(price).toLocaleString());
+
+    if (autoDownload) {
+      await downloadPage(newPage, deviceData.name);
+    }
+
     setFilledElements(updated);
     setLoading(false);
   };
@@ -203,39 +247,80 @@ export const GsmPanel = observer(({ store }) => {
     setFilledElements(0);
 
     let totalUpdated = 0;
+    const templatePage = store.activePage;
 
-    for (const line of lines) {
-      const parts = line.trim().split(/\s+/);
-      if (parts.length < 2) continue;
+    if (!templatePage) {
+      setError('No template page selected');
+      setLoading(false);
+      return;
+    }
 
-      const price = parts.pop();
-      const deviceName = parts.join(' ');
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim();
+      setFeedback(`Processing \( {i + 1}/ \){lines.length}: ${line}`);
 
-      let ram = null, storage = null;
-      const ramStorageMatch = deviceName.match(/(\d+)gb\s*\/\s*(\d+)gb/i);
-      if (ramStorageMatch) {
-        ram = ramStorageMatch[1] + 'GB';
-        storage = ramStorageMatch[2] + 'GB';
+      const newPage = duplicateTemplatePage(templatePage);
+      store.selectPage(newPage.id);
+
+      const deviceData = await fetchGsmSpecs(line);
+      if (!deviceData) {
+        setFeedback(`No match for \( {line} ( \){i + 1}/${lines.length})`);
+        continue;
       }
 
-      const deviceData = await fetchGsmSpecs(deviceName);
-      if (!deviceData) continue;
+      const updated = await fillPage(newPage, deviceData);
 
-      let specs = [...deviceData.specs];
-      if (ram || storage) {
-        specs = specs.map(s => {
-          if (/ram/i.test(s)) return { ...s, value: ram || s.value };
-          if (/storage|rom|memory/i.test(s)) return { ...s, value: storage || s.value };
-          return s;
-        });
+      if (autoDownload) {
+        await downloadPage(newPage, deviceData.name);
       }
 
-      const updated = await fillAndOptionallyExport(deviceData, 'KSh ' + Number(price).toLocaleString(), specs);
       totalUpdated += updated;
+      setFeedback(`Filled: \( {deviceData.name} ( \){i + 1}/\( {lines.length}) \){autoDownload ? ' + downloaded' : ''}`);
+      await new Promise(r => setTimeout(r, 1500));
     }
 
     setFilledElements(totalUpdated);
     setLoading(false);
+    setFeedback(`Batch complete! Filled ${lines.length} posters.`);
+  };
+
+  const duplicateTemplatePage = (templatePage) => {
+    const newPage = store.addPage({
+      width: templatePage.width,
+      height: templatePage.height,
+      background: templatePage.background || '#ffffff'
+    });
+
+    templatePage.children.forEach(child => {
+      const cleanData = {
+        type: child.type,
+        name: child.name,
+        x: child.x,
+        y: child.y,
+        width: child.width,
+        height: child.height,
+        rotation: child.rotation || 0,
+        opacity: child.opacity || 1,
+        visible: child.visible !== false
+      };
+
+      if (child.type === 'text') {
+        cleanData.text = child.text || '';
+        cleanData.fontSize = child.fontSize;
+        cleanData.fill = child.fill;
+        cleanData.align = child.align || 'left';
+        cleanData.fontFamily = child.fontFamily;
+      }
+
+      if (child.type === 'image') {
+        cleanData.src = '';
+        cleanData.keepRatio = child.keepRatio !== false;
+      }
+
+      newPage.addElement(cleanData);
+    });
+
+    return newPage;
   };
 
   return (
@@ -255,7 +340,7 @@ export const GsmPanel = observer(({ store }) => {
       <Checkbox
         checked={autoDownload}
         onChange={e => setAutoDownload(e.target.checked)}
-        label="Auto-download filled posters as PNG"
+        label="Auto-download each filled poster as PNG"
         style={{ marginBottom: 16 }}
       />
 
