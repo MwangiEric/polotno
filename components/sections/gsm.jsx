@@ -3,63 +3,49 @@
 import React, { useState } from 'react';
 import { observer } from 'mobx-react-lite';
 import { SectionTab } from 'polotno/side-panel';
-import { InputGroup, Button, Callout, Tag } from '@blueprintjs/core';
+import { InputGroup, Button, Callout, Tag, TextArea } from '@blueprintjs/core';
 
-// Fixed: Removed extra spaces in URLs
 const CORS_PROXY = 'https://cors.ericmwangi13.workers.dev/?url=';
 const GSM_API_BASE = 'https://phapi-kappa.vercel.app/specs-image?device=';
 const WSRV = 'https://wsrv.nl/?url=';
 
 export const GsmPanel = observer(({ store }) => {
-  const [device, setDevice] = useState('');
+  const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [result, setResult] = useState(null);
   const [filledElements, setFilledElements] = useState(0);
-  const [cache, setCache] = useState(new Map());
+  const [batchMode, setBatchMode] = useState(false);
+  const [batchResults, setBatchResults] = useState([]);
 
-  const fetchGsmSpecs = async () => {
-    const query = device.trim().toLowerCase();
-    if (!query) {
-      setError('Enter a device name (e.g. s25, iphone 16 pro)');
-      return;
-    }
+  const fetchGsmSpecs = async (deviceName) => {
+    if (!deviceName.trim()) return null;
 
-    if (cache.has(query)) {
-      setResult(cache.get(query));
-      return;
-    }
+    const query = deviceName.trim().toLowerCase();
+    const apiUrl = GSM_API_BASE + encodeURIComponent(query);
+    const proxyUrl = CORS_PROXY + encodeURIComponent(apiUrl);
 
-    setLoading(true);
-    setError('');
-    setResult(null);
-    setFilledElements(0);
+    console.log('Fetching specs for:', proxyUrl);
 
     try {
-      const apiUrl = GSM_API_BASE + encodeURIComponent(query);
-      const proxyUrl = CORS_PROXY + encodeURIComponent(apiUrl);
-
       const res = await fetch(proxyUrl, {
         headers: { 'Accept': 'application/json' }
       });
-      
+
       if (!res.ok) throw new Error(`API error ${res.status}`);
 
       const data = await res.json();
       if (!data.device) throw new Error('No device data returned');
 
       const images = [];
-      if (data.image_2) {
-        images.push(`${WSRV}${encodeURIComponent(data.image_2)}&trim=10&output=png&bg=transparent&w=800&h=800&fit=contain`);
-      }
-      if (data.image_1) {
-        images.push(`${WSRV}${encodeURIComponent(data.image_1)}&trim=10&output=png&bg=transparent&w=800&h=800&fit=contain`);
-      }
+      if (data.image_2) images.push(`\( {WSRV} \){encodeURIComponent(data.image_2)}&w=800&h=800&fit=contain&output=png`);
+      if (data.image_1) images.push(`\( {WSRV} \){encodeURIComponent(data.image_1)}&w=800&h=800&fit=contain&output=png`);
 
       const specs = data.specs || [];
-      const processed = {
+
+      return {
         device: data.device,
-        announced: data.announced || 'Not specified',
+        announced: data.announced || 'N/A',
         spec_page: data.spec_page || '',
         specs,
         spec1: specs[0] || 'N/A',
@@ -69,58 +55,43 @@ export const GsmPanel = observer(({ store }) => {
         images,
         body_colour: data.body_colour || 'N/A'
       };
-
-      setCache(prev => new Map(prev).set(query, processed));
-      setResult(processed);
     } catch (err) {
-      setError(err.message || 'Failed to fetch specs.');
-    } finally {
-      setLoading(false);
+      console.error('GSM fetch error:', err);
+      return null;
     }
   };
 
-  const handleKeyDown = (e) => {
-    if (e.key === 'Enter' && !loading && device.trim()) {
-      fetchGsmSpecs();
-    }
-  };
-
-  const fillCanvas = async () => {
-    if (!result) {
-      setError('No data loaded yet.');
-      return;
-    }
-
+  const fillCurrentPage = async (deviceData, customPrice = null, customSpecs = null) => {
     const page = store.activePage;
-    if (!page) {
-      setError('No active page found.');
-      return;
-    }
+    if (!page || !deviceData) return 0;
+
+    let price = customPrice || deviceData.price || 'N/A';
+    let specs = customSpecs || deviceData.specs || [];
+
+    const dataMap = {
+      '{{name}}': deviceData.device || 'Unknown Device',
+      '{{price}}': price,
+      '{{spec1}}': specs[0] || 'N/A',
+      '{{spec2}}': specs[1] || 'N/A',
+      '{{spec3}}': specs[2] || 'N/A',
+      '{{spec4}}': specs[3] || 'N/A',
+      '{{image1}}': deviceData.images[0] || '',
+      '{{image2}}': deviceData.images[1] || '',
+      '{{image3}}': deviceData.images[2] || '',
+      '{{image4}}': deviceData.images[3] || ''
+    };
 
     let updatedCount = 0;
 
     page.children.forEach(el => {
-      // Handle text elements
+      // Text replacement
       if (el.type === 'text') {
-        const currentText = (el.text || '').trim();
+        let currentText = (el.text || '').trim();
         let newText = currentText;
 
-        const replacements = {
-          '{{device}}': result.device,
-          '{{announced}}': result.announced,
-          '{{spec1}}': result.spec1,
-          '{{spec2}}': result.spec2,
-          '{{spec3}}': result.spec3,
-          '{{spec4}}': result.spec4,
-          '{{colour}}': result.body_colour,
-          '{{color}}': result.body_colour,
-          '{{body_colour}}': result.body_colour,
-          '{{body_color}}': result.body_colour
-        };
-
-        Object.entries(replacements).forEach(([placeholder, value]) => {
+        Object.entries(dataMap).forEach(([placeholder, value]) => {
           const escaped = placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-          newText = newText.replace(new RegExp(escaped, 'gi'), value || 'N/A');
+          newText = newText.replace(new RegExp(escaped, 'gi'), value || '');
         });
 
         if (newText !== currentText) {
@@ -129,21 +100,20 @@ export const GsmPanel = observer(({ store }) => {
         }
       }
 
-      // Handle image elements - CRITICAL FIX HERE
+      // Image replacement - preserve size/position
       if (el.type === 'image') {
         const match = el.name?.match(/image(\d+)/i);
         if (match) {
           const index = parseInt(match[1], 10) - 1;
-          if (result.images[index]) {
-            const newSrc = result.images[index];
-            
-            // Get current dimensions to preserve them
+          if (deviceData.images[index]) {
+            const newSrc = deviceData.images[index];
+
+            // Preserve current dimensions & position
             const currentWidth = el.width || 300;
             const currentHeight = el.height || 300;
             const currentX = el.x || 0;
             const currentY = el.y || 0;
 
-            // Important: Set src last to ensure dimensions are maintained
             el.set({
               src: newSrc,
               width: currentWidth,
@@ -151,71 +121,151 @@ export const GsmPanel = observer(({ store }) => {
               x: currentX,
               y: currentY,
               rotation: 0,
-              // Ensure image is visible
-              visible: true,
-              // Reset crop if any
-              crop: null
+              visible: true
             });
-            
+
             updatedCount++;
-            console.log(`Updated image${index + 1}:`, { src: newSrc, width: currentWidth, height: currentHeight, x: currentX, y: currentY });
           }
         }
       }
     });
 
-    setFilledElements(updatedCount);
-
-    if (updatedCount === 0) {
-      setError('No matching placeholders found. Use {{device}}, {{spec1}}, or name images "image1", "image2".');
-    } else {
-      // Force store update to refresh canvas
-      store.activePage?.set({});
-    }
+    return updatedCount;
   };
 
-  const clearResult = () => {
-    setResult(null);
+  const handleSingleFill = async () => {
+    const parts = input.trim().split(/\s+/);
+    if (parts.length < 2) {
+      setError('Format: device name price (e.g. Samsung a56 50000)');
+      return;
+    }
+
+    const price = parts.pop();
+    const deviceName = parts.join(' ');
+
+    setLoading(true);
     setError('');
     setFilledElements(0);
+
+    const deviceData = await fetchGsmSpecs(deviceName);
+
+    if (!deviceData) {
+      setError('No specs found for this device.');
+      setLoading(false);
+      return;
+    }
+
+    const updated = await fillCurrentPage(deviceData, `KSh ${Number(price).toLocaleString()}`);
+    setFilledElements(updated);
+    setLoading(false);
+  };
+
+  const handleBatchFill = async () => {
+    const lines = batchInput.trim().split('\n').filter(Boolean);
+    if (lines.length === 0) {
+      setError('Paste at least one line');
+      return;
+    }
+
+    setLoading(true);
+    setError('');
+    setFilledElements(0);
+
+    let totalUpdated = 0;
+
+    for (const line of lines) {
+      const parts = line.trim().split(/\s+/);
+      if (parts.length < 2) continue;
+
+      const price = parts.pop();
+      const deviceName = parts.join(' ');
+
+      const deviceData = await fetchGsmSpecs(deviceName);
+      if (!deviceData) continue;
+
+      // Override specs if user provided ram/storage
+      let specs = [...deviceData.specs];
+      const ramStorageMatch = deviceName.match(/(\d+)gb\s*\/\s*(\d+)gb/i);
+      if (ramStorageMatch) {
+        const ram = `${ramStorageMatch[1]}GB`;
+        const storage = `${ramStorageMatch[2]}GB`;
+
+        // Replace RAM and Storage specs
+        specs = specs.map(s => {
+          if (/ram/i.test(s)) return { ...s, value: ram };
+          if (/storage|rom|memory/i.test(s)) return { ...s, value: storage };
+          return s;
+        });
+      }
+
+      const updated = await fillCurrentPage(deviceData, `KSh ${Number(price).toLocaleString()}`, specs);
+      totalUpdated += updated;
+    }
+
+    setFilledElements(totalUpdated);
+    setLoading(false);
   };
 
   return (
     <div style={{ height: '100%', padding: 16, display: 'flex', flexDirection: 'column' }}>
-      <h3 style={{ marginTop: 0 }}>GSM Arena Specs</h3>
+      <h3 style={{ marginTop: 0 }}>GSM Arena Specs + Price Fill</h3>
       <p style={{ marginBottom: 16, color: '#aaa', fontSize: '14px' }}>
-        Enter device name to auto-fill templates
+        Single: device name price<br />
+        Batch: one per line (device name price)
       </p>
 
-      <InputGroup
+      <div style={{ marginBottom: 12 }}>
+        <Tag intent="primary" minimal style={{ fontSize: 11 }}>
+          Supported: {{name}}, {{price}}, {{spec1}}–{{spec4}}, {{image1}}–{{image4}}
+        </Tag>
+      </div>
+
+      <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+        <InputGroup
+          large
+          leftIcon="search"
+          placeholder="Single: Samsung a56 50000"
+          value={input}
+          onChange={e => setInput(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && handleSingleFill()}
+          style={{ flex: 1 }}
+          disabled={loading}
+        />
+
+        <Button
+          intent="primary"
+          onClick={handleSingleFill}
+          loading={loading}
+          disabled={loading || !input.trim()}
+        >
+          Fill Single
+        </Button>
+      </div>
+
+      <TextArea
         large
-        leftIcon="search"
-        placeholder="s25, iphone 16, pixel 9..."
-        value={device}
-        onChange={e => setDevice(e.target.value)}
-        onKeyDown={handleKeyDown}
-        style={{ marginBottom: 12 }}
+        fill
+        growVertically
+        placeholder="Batch mode - one per line:\nSamsung a56 8gb/256gb 50000\niPhone 16 Pro 120000"
+        value={batchInput}
+        onChange={e => setBatchInput(e.target.value)}
+        style={{ minHeight: 100, marginBottom: 12 }}
         disabled={loading}
       />
 
-      <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-        <Button
-          intent="primary"
-          onClick={fetchGsmSpecs}
-          loading={loading}
-          disabled={loading || !device.trim()}
-          fill
-        >
-          {loading ? 'Fetching...' : 'Get Specs'}
-        </Button>
-        
-        {result && (
-          <Button intent="warning" onClick={clearResult} icon="cross" minimal />
-        )}
-      </div>
+      <Button
+        large
+        intent="success"
+        onClick={handleBatchFill}
+        loading={loading}
+        disabled={loading || !batchInput.trim()}
+        style={{ marginBottom: 16 }}
+      >
+        Fill Batch
+      </Button>
 
       {error && (
-        <Callout intent="danger" style={{ marginBottom: 16 }} onDismiss={() => setError('')}>
+        <Callout intent="danger" style={{ marginBottom: 16 }}>
           {error}
         </Callout>
       )}
@@ -224,41 +274,6 @@ export const GsmPanel = observer(({ store }) => {
         <Callout intent="success" style={{ marginBottom: 16 }}>
           Updated {filledElements} elements
         </Callout>
-      )}
-
-      {result && (
-        <div style={{ flex: 1, overflowY: 'auto' }}>
-          <Callout intent="success" title={result.device} style={{ marginBottom: 16 }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <div><Tag minimal>Announced</Tag> <div>{result.announced}</div></div>
-              <div>
-                <Tag minimal>Specs</Tag>
-                <div style={{ fontSize: '13px', lineHeight: 1.6, marginTop: 4 }}>
-                  <div>• {result.spec1}</div>
-                  <div>• {result.spec2}</div>
-                  <div>• {result.spec3}</div>
-                  <div>• {result.spec4}</div>
-                </div>
-              </div>
-              <div><Tag minimal>Color</Tag> <div>{result.body_colour}</div></div>
-              <div><Tag minimal>Images</Tag> <div>{result.images.length} available</div></div>
-              
-              {result.spec_page && (
-                <Button small rightIcon="share" onClick={() => window.open(result.spec_page, '_blank')} minimal>
-                  View on GSMArena
-                </Button>
-              )}
-            </div>
-          </Callout>
-
-          <Button large intent="success" onClick={fillCanvas} icon="import" fill>
-            Fill Canvas Template
-          </Button>
-
-          <div style={{ marginTop: 12, padding: 12, background: '#f5f5f5', borderRadius: 4, fontSize: '12px', color: '#666' }}>
-            <strong>Tip:</strong> Name image elements image1, image2 in the Layers panel to auto-fill them.
-          </div>
-        </div>
       )}
     </div>
   );
