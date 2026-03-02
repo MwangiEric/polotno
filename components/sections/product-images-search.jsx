@@ -10,6 +10,14 @@ const RSS_API_BASE = 'https://myrhubpy.vercel.app/smartphoneskenya/search/';
 
 const generateId = () => Math.random().toString(36).substr(2, 9);
 
+// Helper: Wait for image to actually load
+const loadImage = (src) => new Promise((resolve, reject) => {
+  const img = new Image();
+  img.onload = () => resolve(src);
+  img.onerror = () => reject(new Error(`Failed to load: ${src}`));
+  img.src = src;
+});
+
 export const ProductImagesSearchPanel = observer(({ store }) => {
   const [batchInput, setBatchInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -19,8 +27,8 @@ export const ProductImagesSearchPanel = observer(({ store }) => {
   const [autoDownload, setAutoDownload] = useState(false);
 
   const parseInputLine = (line) => {
-    const priceMatch = line.match(/([\d,]+)\s*$/);
-    const price = priceMatch ? `KSh ${priceMatch[1]}` : null;
+    const priceMatch = line.match(/(?:KSh\s*)?([\d,]+)\s*$/i);
+    const price = priceMatch ? `KSh ${priceMatch[1].replace(/,/g, '')}` : null;
     const name = priceMatch ? line.replace(priceMatch[0], '').trim() : line.trim();
     return { name, price };
   };
@@ -30,13 +38,25 @@ export const ProductImagesSearchPanel = observer(({ store }) => {
 
     try {
       const apiUrl = `${RSS_API_BASE}${encodeURIComponent(query.trim())}.json`;
-      const proxyUrl = `${CORS_PROXY}${encodeURIComponent(apiUrl)}`;
+      const proxyUrl = `${CORS_PROXY}${apiUrl}`;
 
       const res = await fetch(proxyUrl);
-      if (!res.ok) return null;
+      if (!res.ok) {
+        console.error('API error:', res.status, await res.text());
+        return null;
+      }
 
       const data = await res.json();
-      const item = data.items?.[0]?.extra;
+      
+      const searchLower = query.toLowerCase();
+      let item = data.items?.find(i => 
+        i.extra?.product_name?.toLowerCase().includes(searchLower)
+      )?.extra;
+      
+      if (!item) {
+        item = data.items?.[0]?.extra;
+      }
+      
       if (!item) return null;
 
       const finalPrice = providedPrice || item.price || 'N/A';
@@ -45,12 +65,13 @@ export const ProductImagesSearchPanel = observer(({ store }) => {
         name: item.product_name || query.trim(),
         price: finalPrice,
         images: [item.image1, item.image2, item.image3, item.image4].filter(Boolean),
+        // Return raw spec values without labels - template uses icons
         specs: [
-          { label: 'Display', value: item.spec1 || 'N/A' },
-          { label: 'RAM', value: item.spec2 || 'N/A' },
-          { label: 'Storage', value: item.spec3 || 'N/A' },
-          { label: 'OS', value: item.spec4 || 'N/A' }
-        ].filter(s => s.value !== 'N/A')
+          item.spec1 || '',  // Display value only
+          item.spec2 || '',  // RAM value only  
+          item.spec3 || '',  // Storage value only
+          item.spec4 || ''   // OS value only
+        ]
       };
     } catch (err) {
       console.error('Search error:', err);
@@ -97,13 +118,21 @@ export const ProductImagesSearchPanel = observer(({ store }) => {
   };
 
   const fillPage = async (page, item) => {
+    // Case-insensitive variable mapping - only values, no labels
     const textMap = {
       '{{name}}': item.name,
       '{{price}}': item.price,
-      '{{spec1}}': item.specs[0] ? `${item.specs[0].label}: ${item.specs[0].value}` : '',
-      '{{spec2}}': item.specs[1] ? `${item.specs[1].label}: ${item.specs[1].value}` : '',
-      '{{spec3}}': item.specs[2] ? `${item.specs[2].label}: ${item.specs[2].value}` : '',
-      '{{spec4}}': item.specs[3] ? `${item.specs[3].label}: ${item.specs[3].value}` : '',
+      '{{spec1}}': item.specs[0] || '',
+      '{{spec2}}': item.specs[1] || '',
+      '{{spec3}}': item.specs[2] || '',
+      '{{spec4}}': item.specs[3] || '',
+      // Case-insensitive variants
+      '{{NAME}}': item.name,
+      '{{PRICE}}': item.price,
+      '{{SPEC1}}': item.specs[0] || '',
+      '{{SPEC2}}': item.specs[1] || '',
+      '{{SPEC3}}': item.specs[2] || '',
+      '{{SPEC4}}': item.specs[3] || '',
     };
 
     page.children.forEach(el => {
@@ -113,6 +142,7 @@ export const ProductImagesSearchPanel = observer(({ store }) => {
       let changed = false;
 
       Object.keys(textMap).forEach(key => {
+        // Case-insensitive regex replacement
         const regex = new RegExp(key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
         if (regex.test(newText)) {
           newText = newText.replace(regex, textMap[key]);
@@ -125,36 +155,44 @@ export const ProductImagesSearchPanel = observer(({ store }) => {
       }
     });
 
+    // Handle {{image1}}, {{image2}}, etc. - case insensitive
     const imageElements = [];
     page.children.forEach(el => {
       if (el.type !== 'image') return;
       
-      const match = el.name?.match(/^image(\d+)$/i);
+      // Match {{image1}}, {{IMAGE1}}, {{Image1}}, etc.
+      const textContent = el.name || '';
+      const match = textContent.match(/\{\{image(\d+)\}\}/i);
       if (!match) return;
       
-      const key = `image${match[1]}`;
-      const src = item.images[parseInt(match[1]) - 1];
+      const idx = parseInt(match[1]) - 1;
+      const src = item.images[idx];
       
       if (src) {
-        imageElements.push({ el, src });
+        imageElements.push({ el, src, idx });
       }
     });
 
-    for (let i = 0; i < imageElements.length; i++) {
-      const { el, src } = imageElements[i];
-      
-      if (i > 0) {
-        await new Promise(r => setTimeout(r, 1000));
+    for (const { el, src } of imageElements) {
+      try {
+        await loadImage(src);
+        
+        el.set({ 
+          src, 
+          visible: true,
+          cropX: 0,
+          cropY: 0,
+          cropWidth: 1,
+          cropHeight: 1
+        });
+        
+        if (imageElements.length > 1) {
+          await new Promise(r => setTimeout(r, 300));
+        }
+      } catch (err) {
+        console.warn('Image failed to load:', src);
+        el.set({ src, visible: true });
       }
-      
-      el.set({ 
-        src, 
-        visible: true,
-        cropX: 0,
-        cropY: 0,
-        cropWidth: 1,
-        cropHeight: 1
-      });
     }
   };
 
@@ -231,7 +269,7 @@ export const ProductImagesSearchPanel = observer(({ store }) => {
     <div style={{ height: '100%', padding: 16, background: '#1a1a1b', color: 'white', display: 'flex', flexDirection: 'column' }}>
       <h3 style={{ margin: 0 }}>Batch Poster Filler</h3>
       <p style={{ fontSize: 11, color: '#888', marginBottom: 15 }}>
-        Paste list (one per line). Include price optionally: Product Name 45,000
+        Paste list (one per line). Include price optionally: "Product Name 45,000"
       </p>
 
       <TextArea
