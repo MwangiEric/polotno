@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { observer } from 'mobx-react-lite';
 import { SectionTab } from 'polotno/side-panel';
-import { InputGroup, Button, Callout, Tag, TextArea } from '@blueprintjs/core';
+import { InputGroup, Button, Callout, Tag, TextArea, Checkbox } from '@blueprintjs/core';
 
 const CORS_PROXY = 'https://cors.ericmwangi13.workers.dev/?url=';
 const GSM_API_BASE = 'https://phapi-kappa.vercel.app/specs-image?device=';
@@ -14,9 +14,8 @@ export const GsmPanel = observer(({ store }) => {
   const [batchInput, setBatchInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [result, setResult] = useState(null);
   const [filledElements, setFilledElements] = useState(0);
-  const [batchMode, setBatchMode] = useState(false);
+  const [autoDownload, setAutoDownload] = useState(false);
 
   const fetchGsmSpecs = async (deviceName) => {
     if (!deviceName.trim()) return null;
@@ -27,7 +26,7 @@ export const GsmPanel = observer(({ store }) => {
 
     try {
       const res = await fetch(proxyUrl, {
-        headers: { 'Accept': 'application/json' }
+        headers: { Accept: 'application/json' }
       });
 
       if (!res.ok) throw new Error(`API returned ${res.status}`);
@@ -42,7 +41,7 @@ export const GsmPanel = observer(({ store }) => {
       const specs = data.specs || [];
 
       return {
-        device: data.device,
+        name: data.device,
         announced: data.announced || 'N/A',
         spec_page: data.spec_page || '',
         specs,
@@ -61,15 +60,15 @@ export const GsmPanel = observer(({ store }) => {
     }
   };
 
-  const fillCurrentPage = async (deviceData, customPrice = null, customSpecs = null) => {
+  const fillAndOptionallyExport = async (deviceData, customPrice = null, customSpecs = null) => {
     const page = store.activePage;
     if (!page || !deviceData) return 0;
 
-    let price = customPrice || deviceData.price || 'N/A';
+    let price = customPrice || 'N/A';
     let specs = customSpecs || deviceData.specs || [];
 
     const dataMap = {
-      '{{name}}': deviceData.device || 'Unknown Device',
+      '{{name}}': deviceData.name || 'Unknown Device',
       '{{price}}': price,
       '{{spec1}}': specs[0] || 'N/A',
       '{{spec2}}': specs[1] || 'N/A',
@@ -85,7 +84,6 @@ export const GsmPanel = observer(({ store }) => {
     let updatedCount = 0;
 
     page.children.forEach(el => {
-      // Text replacement
       if (el.type === 'text') {
         let currentText = (el.text || '').trim();
         let newText = currentText;
@@ -101,7 +99,6 @@ export const GsmPanel = observer(({ store }) => {
         }
       }
 
-      // Image replacement - preserve size/position
       if (el.type === 'image') {
         const match = el.name?.match(/image(\d+)/i);
         if (match) {
@@ -130,6 +127,32 @@ export const GsmPanel = observer(({ store }) => {
       }
     });
 
+    if (autoDownload) {
+      try {
+        await new Promise(resolve => setTimeout(resolve, 1500));
+
+        const safeName = (deviceData.name || 'product')
+          .replace(/[^a-z0-9\s-]/gi, '')
+          .replace(/\s+/g, '-')
+          .toLowerCase();
+
+        const url = await store.toDataURL({
+          pageId: page.id,
+          mimeType: 'image/png',
+          quality: 1
+        });
+
+        const link = document.createElement('a');
+        link.download = `${safeName}.png`;
+        link.href = url;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      } catch (err) {
+        console.warn('Auto-export failed:', err);
+      }
+    }
+
     return updatedCount;
   };
 
@@ -155,7 +178,7 @@ export const GsmPanel = observer(({ store }) => {
       return;
     }
 
-    const updated = await fillCurrentPage(deviceData, `KSh ${Number(price).toLocaleString()}`);
+    const updated = await fillAndOptionallyExport(deviceData, `KSh ${Number(price).toLocaleString()}`);
     setFilledElements(updated);
     setLoading(false);
   };
@@ -180,7 +203,6 @@ export const GsmPanel = observer(({ store }) => {
       const price = parts.pop();
       const deviceName = parts.join(' ');
 
-      // Check for ram/storage variation
       let ram = null, storage = null;
       const ramStorageMatch = deviceName.match(/(\d+)gb\s*\/\s*(\d+)gb/i);
       if (ramStorageMatch) {
@@ -200,7 +222,7 @@ export const GsmPanel = observer(({ store }) => {
         });
       }
 
-      const updated = await fillCurrentPage(deviceData, `KSh ${Number(price).toLocaleString()}`, specs);
+      const updated = await fillAndOptionallyExport(deviceData, `KSh ${Number(price).toLocaleString()}`, specs);
       totalUpdated += updated;
     }
 
@@ -218,9 +240,16 @@ export const GsmPanel = observer(({ store }) => {
 
       <div style={{ marginBottom: 12 }}>
         <Tag intent="primary" minimal style={{ fontSize: 11 }}>
-          Supported: &quot;{{name}}&quot;, &quot;{{price}}&quot;, &quot;{{spec1}}&quot;–&quot;{{spec5}}&quot;, &quot;{{image1}}&quot;–&quot;{{image4}}&quot;
+          Supported placeholders: name, price, spec1 to spec5, image1 to image4
         </Tag>
       </div>
+
+      <Checkbox
+        checked={autoDownload}
+        onChange={e => setAutoDownload(e.target.checked)}
+        label="Auto-download filled posters as PNG"
+        style={{ marginBottom: 16 }}
+      />
 
       <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
         <InputGroup
