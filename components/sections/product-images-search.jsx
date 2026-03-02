@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { observer } from 'mobx-react-lite';
 import { SectionTab } from 'polotno/side-panel';
-import { Button, Callout, TextArea, Tag } from '@blueprintjs/core';
+import { Button, Callout, TextArea, Tag, Checkbox } from '@blueprintjs/core';
 
 const CORS_PROXY = 'https://cors.ericmwangi13.workers.dev/?url=';
 const RSS_API_BASE = 'https://myrhubpy.vercel.app/smartphoneskenya/search/';
@@ -16,12 +16,20 @@ export const ProductImagesSearchPanel = observer(({ store }) => {
   const [error, setError] = useState('');
   const [results, setResults] = useState([]);
   const [feedback, setFeedback] = useState('');
+  const [autoDownload, setAutoDownload] = useState(false);
 
-  const searchSingle = async (q) => {
-    if (!q.trim()) return null;
+  const parseInputLine = (line) => {
+    const priceMatch = line.match(/([\d,]+)\s*$/);
+    const price = priceMatch ? `KSh ${priceMatch[1]}` : null;
+    const name = priceMatch ? line.replace(priceMatch[0], '').trim() : line.trim();
+    return { name, price };
+  };
+
+  const searchSingle = async (query, providedPrice) => {
+    if (!query.trim()) return null;
 
     try {
-      const apiUrl = `${RSS_API_BASE}${encodeURIComponent(q.trim())}.json`;
+      const apiUrl = `${RSS_API_BASE}${encodeURIComponent(query.trim())}.json`;
       const proxyUrl = `${CORS_PROXY}${encodeURIComponent(apiUrl)}`;
 
       const res = await fetch(proxyUrl);
@@ -31,9 +39,11 @@ export const ProductImagesSearchPanel = observer(({ store }) => {
       const item = data.items?.[0]?.extra;
       if (!item) return null;
 
+      const finalPrice = providedPrice || item.price || 'N/A';
+
       return {
-        name: item.product_name || q.trim(),
-        price: item.price || 'N/A',
+        name: item.product_name || query.trim(),
+        price: finalPrice,
         images: [item.image1, item.image2, item.image3, item.image4].filter(Boolean),
         specs: [
           { label: 'Display', value: item.spec1 || 'N/A' },
@@ -49,29 +59,37 @@ export const ProductImagesSearchPanel = observer(({ store }) => {
   };
 
   const createCleanPage = (templatePage) => {
-    // Deep clone template page data - breaks all references
-    const templateData = JSON.parse(JSON.stringify(templatePage.toJSON()));
+    const templateData = templatePage.toJSON();
+    
+    const uploadedImages = {};
+    templatePage.children.forEach((el, idx) => {
+      if (el.type === 'image' && !/^image\d+$/i.test(el.name)) {
+        uploadedImages[idx] = el.src;
+      }
+    });
 
-    // Create new page
     const newPage = store.addPage({
       width: templateData.width,
       height: templateData.height,
       background: templateData.background
     });
 
-    // Add elements with completely fresh data
-    templateData.children.forEach(child => {
-      // Deep clone again to ensure no shared references
+    templateData.children.forEach((child, idx) => {
       const elementData = JSON.parse(JSON.stringify(child));
-      
-      // New ID
       elementData.id = generateId();
-      
-      // Clear image src to prevent auto-loading
+
       if (elementData.type === 'image') {
-        elementData.src = '';
+        if (/^image\d+$/i.test(elementData.name)) {
+          elementData.src = '';
+          elementData.cropX = 0;
+          elementData.cropY = 0;
+          elementData.cropWidth = 1;
+          elementData.cropHeight = 1;
+        } else {
+          elementData.src = uploadedImages[idx] || '';
+        }
       }
-      
+
       newPage.addElement(elementData);
     });
 
@@ -88,24 +106,16 @@ export const ProductImagesSearchPanel = observer(({ store }) => {
       '{{spec4}}': item.specs[3] ? `${item.specs[3].label}: ${item.specs[3].value}` : '',
     };
 
-    const imageMap = {
-      'image1': item.images[0] || '',
-      'image2': item.images[1] || '',
-      'image3': item.images[2] || '',
-      'image4': item.images[3] || '',
-    };
-
-    // Fill text elements
     page.children.forEach(el => {
       if (el.type !== 'text') return;
       
       let newText = el.text || '';
       let changed = false;
 
-      Object.entries(textMap).forEach(([key, value]) => {
-        if (newText.includes(key)) {
-          const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-          newText = newText.replace(new RegExp(escaped, 'gi'), value);
+      Object.keys(textMap).forEach(key => {
+        const regex = new RegExp(key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+        if (regex.test(newText)) {
+          newText = newText.replace(regex, textMap[key]);
           changed = true;
         }
       });
@@ -115,16 +125,15 @@ export const ProductImagesSearchPanel = observer(({ store }) => {
       }
     });
 
-    // Fill images sequentially
     const imageElements = [];
     page.children.forEach(el => {
       if (el.type !== 'image') return;
       
-      const match = el.name?.match(/image(\d+)/i);
+      const match = el.name?.match(/^image(\d+)$/i);
       if (!match) return;
       
       const key = `image${match[1]}`;
-      const src = imageMap[key];
+      const src = item.images[parseInt(match[1]) - 1];
       
       if (src) {
         imageElements.push({ el, src });
@@ -134,7 +143,6 @@ export const ProductImagesSearchPanel = observer(({ store }) => {
     for (let i = 0; i < imageElements.length; i++) {
       const { el, src } = imageElements[i];
       
-      // Delay between images (skip delay for first)
       if (i > 0) {
         await new Promise(r => setTimeout(r, 1000));
       }
@@ -148,6 +156,26 @@ export const ProductImagesSearchPanel = observer(({ store }) => {
         cropHeight: 1
       });
     }
+  };
+
+  const downloadPage = async (page, itemName) => {
+    const safeName = itemName
+      .replace(/[^a-z0-9\s-]/gi, '')
+      .replace(/\s+/g, '-')
+      .substring(0, 50);
+    
+    const url = await store.toDataURL({
+      pageId: page.id,
+      mimeType: 'image/png',
+      quality: 1
+    });
+
+    const link = document.createElement('a');
+    link.download = `${safeName || 'poster'}.png`;
+    link.href = url;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   const handleBatchFill = async () => {
@@ -167,25 +195,28 @@ export const ProductImagesSearchPanel = observer(({ store }) => {
 
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i].trim();
-      setFeedback(`Searching: "${line}" (${i + 1}/${lines.length})...`);
+      const { name: searchName, price: providedPrice } = parseInputLine(line);
+      
+      setFeedback(`Searching: "${searchName}" (${i + 1}/${lines.length})...`);
 
-      const item = await searchSingle(line);
+      const item = await searchSingle(searchName, providedPrice);
       if (!item) {
-        setFeedback(`Skipped "${line}" - no match (${i + 1}/${lines.length})`);
+        setFeedback(`Skipped "${searchName}" - no match (${i + 1}/${lines.length})`);
         continue;
       }
 
-      // Create clean page from template
       const newPage = createCleanPage(templatePage);
-      
-      // Select and fill
       store.selectPage(newPage.id);
       await fillPage(newPage, item);
       
-      filled.push(item);
-      setFeedback(`Filled: ${item.name} (${i + 1}/${lines.length})`);
+      if (autoDownload) {
+        await new Promise(r => setTimeout(r, 500));
+        await downloadPage(newPage, item.name);
+      }
       
-      // Small delay between products
+      filled.push(item);
+      setFeedback(`Filled: ${item.name} (${i + 1}/${lines.length})${autoDownload ? ' + downloaded' : ''}`);
+      
       if (i < lines.length - 1) {
         await new Promise(r => setTimeout(r, 500));
       }
@@ -193,24 +224,31 @@ export const ProductImagesSearchPanel = observer(({ store }) => {
 
     setResults(filled);
     setLoading(false);
-    setFeedback(`Done! Filled ${filled.length} of ${lines.length} posters.`);
+    setFeedback(`Done! Filled ${filled.length} of ${lines.length} posters.${autoDownload ? ' All downloaded.' : ''}`);
   };
 
   return (
     <div style={{ height: '100%', padding: 16, background: '#1a1a1b', color: 'white', display: 'flex', flexDirection: 'column' }}>
       <h3 style={{ margin: 0 }}>Batch Poster Filler</h3>
       <p style={{ fontSize: 11, color: '#888', marginBottom: 15 }}>
-        Paste list (one per line) → auto-creates & fills posters
+        Paste list (one per line). Include price optionally: "Product Name 45,000"
       </p>
 
       <TextArea
         large
         fill
         growVertically
-        placeholder="One product per line:\nSamsung Galaxy S24 Ultra\nOnePlus Buds 4\niPhone 16 Pro Max"
+        placeholder="Samsung Galaxy S24 Ultra 125,000&#10;iPhone 16 Pro&#10;OnePlus Buds 4 9,000"
         value={batchInput}
         onChange={e => setBatchInput(e.target.value)}
         style={{ minHeight: 140, resize: 'vertical', marginBottom: 12 }}
+      />
+
+      <Checkbox
+        checked={autoDownload}
+        onChange={e => setAutoDownload(e.target.checked)}
+        label="Auto-download each poster"
+        style={{ marginBottom: 12, color: '#aaa' }}
       />
 
       <Button 
@@ -221,7 +259,7 @@ export const ProductImagesSearchPanel = observer(({ store }) => {
         disabled={loading}
         style={{ marginBottom: 16 }}
       >
-        {loading ? 'Processing...' : 'Start Batch Fill'}
+        {loading ? 'Processing...' : autoDownload ? 'Fill & Download All' : 'Fill All Posters'}
       </Button>
 
       {error && (
@@ -231,7 +269,7 @@ export const ProductImagesSearchPanel = observer(({ store }) => {
       )}
       
       {feedback && (
-        <Callout intent="success" style={{ marginBottom: 12 }}>
+        <Callout intent={feedback.includes('Skipped') ? 'warning' : 'success'} style={{ marginBottom: 12 }}>
           {feedback}
         </Callout>
       )}
