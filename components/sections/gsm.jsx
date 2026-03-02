@@ -10,7 +10,7 @@ const GSM_API_BASE = 'https://phapi-kappa.vercel.app/specs-image?device=';
 const WSRV = 'https://wsrv.nl/?url=';
 
 export const GsmPanel = observer(({ store }) => {
-  const [input, setInput] = useState('');
+  const [singleInput, setSingleInput] = useState('');
   const [batchInput, setBatchInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -29,14 +29,22 @@ export const GsmPanel = observer(({ store }) => {
         headers: { Accept: 'application/json' }
       });
 
-      if (!res.ok) throw new Error(`API returned ${res.status}`);
+      if (!res.ok) throw new Error('API returned ' + res.status);
 
       const data = await res.json();
       if (!data.device) throw new Error('No device data returned');
 
       const images = [];
-      if (data.image_2) images.push(`\( {WSRV} \){encodeURIComponent(data.image_2)}&w=800&h=800&fit=contain&output=png`);
-      if (data.image_1) images.push(`\( {WSRV} \){encodeURIComponent(data.image_1)}&w=800&h=800&fit=contain&output=png`);
+      if (data.image_2) {
+        const src = data.image_2;
+        const wsrvUrl = WSRV + encodeURIComponent(src) + '&w=800&h=800&fit=contain&output=png';
+        images.push(wsrvUrl);
+      }
+      if (data.image_1) {
+        const src = data.image_1;
+        const wsrvUrl = WSRV + encodeURIComponent(src) + '&w=800&h=800&fit=contain&output=png';
+        images.push(wsrvUrl);
+      }
 
       const specs = data.specs || [];
 
@@ -143,7 +151,7 @@ export const GsmPanel = observer(({ store }) => {
         });
 
         const link = document.createElement('a');
-        link.download = `${safeName}.png`;
+        link.download = safeName + '.png';
         link.href = url;
         document.body.appendChild(link);
         link.click();
@@ -157,9 +165,9 @@ export const GsmPanel = observer(({ store }) => {
   };
 
   const handleSingleFill = async () => {
-    const parts = input.trim().split(/\s+/);
+    const parts = singleInput.trim().split(/\s+/);
     if (parts.length < 2) {
-      setError('Format: device name price (e.g. Samsung a56 50000)');
+      setError('Format: device name price (example: Samsung a56 50000)');
       return;
     }
 
@@ -178,7 +186,7 @@ export const GsmPanel = observer(({ store }) => {
       return;
     }
 
-    const updated = await fillAndOptionallyExport(deviceData, `KSh ${Number(price).toLocaleString()}`);
+    const updated = await fillAndOptionallyExport(deviceData, 'KSh ' + Number(price).toLocaleString());
     setFilledElements(updated);
     setLoading(false);
   };
@@ -206,8 +214,8 @@ export const GsmPanel = observer(({ store }) => {
       let ram = null, storage = null;
       const ramStorageMatch = deviceName.match(/(\d+)gb\s*\/\s*(\d+)gb/i);
       if (ramStorageMatch) {
-        ram = `${ramStorageMatch[1]}GB`;
-        storage = `${ramStorageMatch[2]}GB`;
+        ram = ramStorageMatch[1] + 'GB';
+        storage = ramStorageMatch[2] + 'GB';
       }
 
       const deviceData = await fetchGsmSpecs(deviceName);
@@ -222,7 +230,7 @@ export const GsmPanel = observer(({ store }) => {
         });
       }
 
-      const updated = await fillAndOptionallyExport(deviceData, `KSh ${Number(price).toLocaleString()}`, specs);
+      const updated = await fillAndOptionallyExport(deviceData, 'KSh ' + Number(price).toLocaleString(), specs);
       totalUpdated += updated;
     }
 
@@ -256,8 +264,8 @@ export const GsmPanel = observer(({ store }) => {
           large
           leftIcon="search"
           placeholder="Single: Samsung a56 50000"
-          value={input}
-          onChange={e => setInput(e.target.value)}
+          value={singleInput}
+          onChange={e => setSingleInput(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && handleSingleFill()}
           style={{ flex: 1 }}
           disabled={loading}
@@ -267,7 +275,7 @@ export const GsmPanel = observer(({ store }) => {
           intent="primary"
           onClick={handleSingleFill}
           loading={loading}
-          disabled={loading || !input.trim()}
+          disabled={loading || !singleInput.trim()}
         >
           Fill Single
         </Button>
