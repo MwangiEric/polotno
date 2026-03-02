@@ -259,11 +259,12 @@ export const ProductImagesSearchPanel = observer(({ store }) => {
       const line = lines[i].trim();
       const { name: searchName, price: providedPrice } = parseInputLine(line);
       
-      setFeedback(`Searching: "${searchName}" (${i + 1}/${lines.length})...`);
+      // Use single quotes to avoid double quote escaping issues
+      setFeedback('Searching: ' + searchName + ' (' + (i + 1) + '/' + lines.length + ')...');
 
       const item = await searchSingle(searchName, providedPrice);
       if (!item) {
-        setFeedback(`Skipped "${searchName}" - no match (${i + 1}/${lines.length})`);
+        setFeedback('Skipped ' + searchName + ' - no match (' + (i + 1) + '/' + lines.length + ')');
         continue;
       }
 
@@ -277,7 +278,7 @@ export const ProductImagesSearchPanel = observer(({ store }) => {
       }
       
       filled.push(item);
-      setFeedback(`Filled: ${item.name} (${i + 1}/${lines.length})${autoDownload ? ' + downloaded' : ''}`);
+      setFeedback('Filled: ' + item.name + ' (' + (i + 1) + '/' + lines.length + ')' + (autoDownload ? ' + downloaded' : ''));
       
       if (i < lines.length - 1) {
         await new Promise(r => setTimeout(r, 500));
@@ -286,7 +287,7 @@ export const ProductImagesSearchPanel = observer(({ store }) => {
 
     setResults(filled);
     setLoading(false);
-    setFeedback(`Done! Filled ${filled.length} of ${lines.length} posters.${autoDownload ? ' All downloaded.' : ''}`);
+    setFeedback('Done! Filled ' + filled.length + ' of ' + lines.length + ' posters.' + (autoDownload ? ' All downloaded.' : ''));
   };
 
   return (
@@ -300,7 +301,7 @@ export const ProductImagesSearchPanel = observer(({ store }) => {
         large
         fill
         growVertically
-        placeholder={'Samsung Galaxy S24 Ultra 125000\niPhone 16 Pro\nOnePlus Buds 4 9000'}
+        placeholder="Samsung Galaxy S24 Ultra 125000&#10;iPhone 16 Pro&#10;OnePlus Buds 4 9000"
         value={batchInput}
         onChange={e => setBatchInput(e.target.value)}
         style={{ minHeight: 140, resize: 'vertical', marginBottom: 12 }}
