@@ -11,12 +11,12 @@ const WSRV = 'https://wsrv.nl/?url=';
 
 export const GsmPanel = observer(({ store }) => {
   const [input, setInput] = useState('');
+  const [batchInput, setBatchInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [result, setResult] = useState(null);
   const [filledElements, setFilledElements] = useState(0);
   const [batchMode, setBatchMode] = useState(false);
-  const [batchResults, setBatchResults] = useState([]);
 
   const fetchGsmSpecs = async (deviceName) => {
     if (!deviceName.trim()) return null;
@@ -25,14 +25,12 @@ export const GsmPanel = observer(({ store }) => {
     const apiUrl = GSM_API_BASE + encodeURIComponent(query);
     const proxyUrl = CORS_PROXY + encodeURIComponent(apiUrl);
 
-    console.log('Fetching specs for:', proxyUrl);
-
     try {
       const res = await fetch(proxyUrl, {
         headers: { 'Accept': 'application/json' }
       });
 
-      if (!res.ok) throw new Error(`API error ${res.status}`);
+      if (!res.ok) throw new Error(`API returned ${res.status}`);
 
       const data = await res.json();
       if (!data.device) throw new Error('No device data returned');
@@ -52,11 +50,13 @@ export const GsmPanel = observer(({ store }) => {
         spec2: specs[1] || 'N/A',
         spec3: specs[2] || 'N/A',
         spec4: specs[3] || 'N/A',
+        spec5: specs[4] || 'N/A',
         images,
         body_colour: data.body_colour || 'N/A'
       };
     } catch (err) {
       console.error('GSM fetch error:', err);
+      setError('Could not fetch specs from GSMArena.');
       return null;
     }
   };
@@ -75,6 +75,7 @@ export const GsmPanel = observer(({ store }) => {
       '{{spec2}}': specs[1] || 'N/A',
       '{{spec3}}': specs[2] || 'N/A',
       '{{spec4}}': specs[3] || 'N/A',
+      '{{spec5}}': specs[4] || 'N/A',
       '{{image1}}': deviceData.images[0] || '',
       '{{image2}}': deviceData.images[1] || '',
       '{{image3}}': deviceData.images[2] || '',
@@ -108,7 +109,6 @@ export const GsmPanel = observer(({ store }) => {
           if (deviceData.images[index]) {
             const newSrc = deviceData.images[index];
 
-            // Preserve current dimensions & position
             const currentWidth = el.width || 300;
             const currentHeight = el.height || 300;
             const currentX = el.x || 0;
@@ -180,20 +180,22 @@ export const GsmPanel = observer(({ store }) => {
       const price = parts.pop();
       const deviceName = parts.join(' ');
 
+      // Check for ram/storage variation
+      let ram = null, storage = null;
+      const ramStorageMatch = deviceName.match(/(\d+)gb\s*\/\s*(\d+)gb/i);
+      if (ramStorageMatch) {
+        ram = `${ramStorageMatch[1]}GB`;
+        storage = `${ramStorageMatch[2]}GB`;
+      }
+
       const deviceData = await fetchGsmSpecs(deviceName);
       if (!deviceData) continue;
 
-      // Override specs if user provided ram/storage
       let specs = [...deviceData.specs];
-      const ramStorageMatch = deviceName.match(/(\d+)gb\s*\/\s*(\d+)gb/i);
-      if (ramStorageMatch) {
-        const ram = `${ramStorageMatch[1]}GB`;
-        const storage = `${ramStorageMatch[2]}GB`;
-
-        // Replace RAM and Storage specs
+      if (ram || storage) {
         specs = specs.map(s => {
-          if (/ram/i.test(s)) return { ...s, value: ram };
-          if (/storage|rom|memory/i.test(s)) return { ...s, value: storage };
+          if (/ram/i.test(s)) return { ...s, value: ram || s.value };
+          if (/storage|rom|memory/i.test(s)) return { ...s, value: storage || s.value };
           return s;
         });
       }
@@ -211,12 +213,12 @@ export const GsmPanel = observer(({ store }) => {
       <h3 style={{ marginTop: 0 }}>GSM Arena Specs + Price Fill</h3>
       <p style={{ marginBottom: 16, color: '#aaa', fontSize: '14px' }}>
         Single: device name price<br />
-        Batch: one per line (device name price)
+        Batch: one per line (device name [ram/storage] price)
       </p>
 
       <div style={{ marginBottom: 12 }}>
         <Tag intent="primary" minimal style={{ fontSize: 11 }}>
-          Supported: {{name}}, {{price}}, {{spec1}}–{{spec4}}, {{image1}}–{{image4}}
+          Supported: &quot;{{name}}&quot;, &quot;{{price}}&quot;, &quot;{{spec1}}&quot;–&quot;{{spec5}}&quot;, &quot;{{image1}}&quot;–&quot;{{image4}}&quot;
         </Tag>
       </div>
 
