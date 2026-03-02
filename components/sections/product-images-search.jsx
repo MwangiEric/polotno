@@ -36,16 +36,11 @@ export const ProductImagesSearchPanel = observer(({ store }) => {
     if (!query.trim()) return null;
 
     try {
-      // FIX: Only encode the query parameter, not the entire URL
-      // The CORS proxy expects: ?url=https://api.com/endpoint/ENCODED_QUERY.json
       const encodedQuery = encodeURIComponent(query.trim());
       const apiUrl = `${RSS_API_BASE}${encodedQuery}.json`;
-      
-      // Don't double-encode the API URL - just pass it directly to proxy
       const proxyUrl = `${CORS_PROXY}${apiUrl}`;
-      
+
       console.log('Fetching:', proxyUrl);
-      console.log('Target API:', apiUrl);
 
       const res = await fetch(proxyUrl);
       
@@ -63,23 +58,19 @@ export const ProductImagesSearchPanel = observer(({ store }) => {
         return null;
       }
 
-      // Matching logic
       const searchLower = query.toLowerCase().trim();
       let matchedItem = null;
       
-      // Try exact match first
       matchedItem = data.items.find(i => 
         i.extra?.product_name?.toLowerCase().trim() === searchLower
       )?.extra;
       
-      // Try includes match
       if (!matchedItem) {
         matchedItem = data.items.find(i => 
           i.extra?.product_name?.toLowerCase().includes(searchLower)
         )?.extra;
       }
       
-      // Fallback to first item
       if (!matchedItem) {
         matchedItem = data.items[0]?.extra;
         console.log('No match, using first item:', matchedItem?.product_name);
@@ -154,7 +145,6 @@ export const ProductImagesSearchPanel = observer(({ store }) => {
   };
 
   const fillPage = async (page, item) => {
-    // Case-insensitive variable mapping
     const textMap = {
       '{{name}}': item.name,
       '{{price}}': item.price,
@@ -162,7 +152,6 @@ export const ProductImagesSearchPanel = observer(({ store }) => {
       '{{spec2}}': item.specs[1] || '',
       '{{spec3}}': item.specs[2] || '',
       '{{spec4}}': item.specs[3] || '',
-      // Uppercase variants
       '{{NAME}}': item.name,
       '{{PRICE}}': item.price,
       '{{SPEC1}}': item.specs[0] || '',
@@ -178,7 +167,8 @@ export const ProductImagesSearchPanel = observer(({ store }) => {
       let changed = false;
 
       Object.keys(textMap).forEach(key => {
-        const regex = new RegExp(key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+        const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const regex = new RegExp(escapedKey, 'gi');
         if (regex.test(newText)) {
           newText = newText.replace(regex, textMap[key]);
           changed = true;
@@ -190,7 +180,6 @@ export const ProductImagesSearchPanel = observer(({ store }) => {
       }
     });
 
-    // Handle {{image1}}, {{image2}}, etc.
     const imageElements = [];
     page.children.forEach(el => {
       if (el.type !== 'image') return;
@@ -304,14 +293,14 @@ export const ProductImagesSearchPanel = observer(({ store }) => {
     <div style={{ height: '100%', padding: 16, background: '#1a1a1b', color: 'white', display: 'flex', flexDirection: 'column' }}>
       <h3 style={{ margin: 0 }}>Batch Poster Filler</h3>
       <p style={{ fontSize: 11, color: '#888', marginBottom: 15 }}>
-        Paste list (one per line). Include price optionally: "Product Name 45,000"
+        Paste list (one per line). Include price optionally: Product Name 45000
       </p>
 
       <TextArea
         large
         fill
         growVertically
-        placeholder="Samsung Galaxy S24 Ultra 125,000&#10;iPhone 16 Pro&#10;OnePlus Buds 4 9,000"
+        placeholder={'Samsung Galaxy S24 Ultra 125000\niPhone 16 Pro\nOnePlus Buds 4 9000'}
         value={batchInput}
         onChange={e => setBatchInput(e.target.value)}
         style={{ minHeight: 140, resize: 'vertical', marginBottom: 12 }}
