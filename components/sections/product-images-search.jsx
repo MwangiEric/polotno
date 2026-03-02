@@ -231,7 +231,7 @@ export const ProductImagesSearchPanel = observer(({ store }) => {
     <div style={{ height: '100%', padding: 16, background: '#1a1a1b', color: 'white', display: 'flex', flexDirection: 'column' }}>
       <h3 style={{ margin: 0 }}>Batch Poster Filler</h3>
       <p style={{ fontSize: 11, color: '#888', marginBottom: 15 }}>
-        Paste list (one per line). Include price optionally: "Product Name 45,000"
+        Paste list (one per line). Include price optionally: Product Name 45,000
       </p>
 
       <TextArea
