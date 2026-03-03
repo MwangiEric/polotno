@@ -1,6 +1,6 @@
 // components/sections/my-templates.jsx
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { observer } from 'mobx-react-lite';
 import { SectionTab } from 'polotno/side-panel';
 import { 
@@ -8,6 +8,7 @@ import {
   Dialog, Classes, Callout, Tag, Icon,
   Divider, Spinner
 } from '@blueprintjs/core';
+import Image from 'next/image';
 
 // GitHub repo configuration
 const GITHUB_REPO = 'MwangiEric/polotno';
@@ -29,26 +30,18 @@ export const MyTemplatesPanel = observer(({ store }) => {
   const [githubToken, setGithubToken] = useState('');
   const [isTokenDialogOpen, setIsTokenDialogOpen] = useState(false);
 
-  // Load templates from GitHub on mount
-  useEffect(() => {
-    loadTemplatesFromGitHub();
-  }, []);
-
-  // Fetch template list from GitHub
-  const loadTemplatesFromGitHub = async () => {
+  // Load templates from GitHub on mount - FIXED: useCallback for dependency
+  const loadTemplatesFromGitHub = useCallback(async () => {
     setLoading(true);
     try {
-      // Try to get directory listing from GitHub API (no token needed for public repos)
       const response = await fetch(GITHUB_API_URL);
       
       if (!response.ok) {
-        // If API fails (rate limit), try cached list
         const cached = localStorage.getItem(CACHE_KEY);
         if (cached) {
           setTemplates(JSON.parse(cached));
           setMessage('Loaded from cache. GitHub API rate limited.');
         } else {
-          // Fallback: try to load known default templates
           await loadDefaultTemplates();
         }
         setLoading(false);
@@ -58,7 +51,6 @@ export const MyTemplatesPanel = observer(({ store }) => {
       const files = await response.json();
       const jsonFiles = files.filter(f => f.name.endsWith('.json'));
 
-      // Load metadata for each template
       const templatesList = await Promise.all(
         jsonFiles.map(async (file) => {
           const templateData = await fetchTemplateFromGitHub(file.name);
@@ -72,18 +64,16 @@ export const MyTemplatesPanel = observer(({ store }) => {
             elementCount: templateData.pages?.[0]?.children?.length || 0,
             thumbnail: templateData.thumbnail || null,
             source: 'github',
-            sha: file.sha // For updates
+            sha: file.sha
           };
         })
       );
 
       setTemplates(templatesList);
-      // Cache metadata only (small)
       localStorage.setItem(CACHE_KEY, JSON.stringify(templatesList));
       
     } catch (err) {
       console.error('Failed to load from GitHub:', err);
-      // Try cache fallback
       const cached = localStorage.getItem(CACHE_KEY);
       if (cached) {
         setTemplates(JSON.parse(cached));
@@ -91,9 +81,13 @@ export const MyTemplatesPanel = observer(({ store }) => {
       }
     }
     setLoading(false);
-  };
+  }, []); // Empty dependency array since it doesn't depend on props/state
 
-  // Fetch individual template JSON from GitHub raw URL (no token needed)
+  useEffect(() => {
+    loadTemplatesFromGitHub();
+  }, [loadTemplatesFromGitHub]); // FIXED: Added dependency
+
+  // Fetch individual template JSON from GitHub raw URL
   const fetchTemplateFromGitHub = async (filename) => {
     try {
       const response = await fetch(`${GITHUB_RAW_URL}/${filename}`);
@@ -146,7 +140,7 @@ export const MyTemplatesPanel = observer(({ store }) => {
     setLoading(false);
   };
 
-  // Save current canvas as template (requires GitHub token for push)
+  // Save current canvas as template
   const saveCurrentTemplate = async () => {
     if (!templateName.trim()) {
       setMessage('Please enter a template name');
@@ -163,18 +157,16 @@ export const MyTemplatesPanel = observer(({ store }) => {
       const json = store.toJSON();
       const filename = `${templateName.trim().replace(/\s+/g, '-').toLowerCase()}.json`;
 
-      // Generate thumbnail
       const thumbnail = await store.toDataURL({ pixelRatio: 0.3 });
 
       const templateData = {
         name: templateName.trim(),
         width: store.width,
         height: store.height,
-        thumbnail: thumbnail, // Store thumbnail in JSON
+        thumbnail: thumbnail,
         pages: json.pages
       };
 
-      // Push to GitHub (requires token with repo access)
       const content = btoa(JSON.stringify(templateData, null, 2));
       
       const response = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/contents/${TEMPLATES_PATH}/${filename}`, {
@@ -197,7 +189,6 @@ export const MyTemplatesPanel = observer(({ store }) => {
 
       const result = await response.json();
 
-      // Add to local list
       const newTemplate = {
         id: filename.replace('.json', ''),
         name: templateName.trim(),
@@ -226,7 +217,7 @@ export const MyTemplatesPanel = observer(({ store }) => {
     setLoading(false);
   };
 
-  // Upload JSON template file (local only, then optionally push to GitHub)
+  // Upload JSON template file
   const handleFileUpload = async (event) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -242,7 +233,6 @@ export const MyTemplatesPanel = observer(({ store }) => {
 
       const templateData = json.pages ? json : { pages: [json] };
 
-      // If GitHub token available, push to repo
       if (githubToken) {
         const filename = file.name;
         const content = btoa(JSON.stringify(templateData, null, 2));
@@ -283,7 +273,6 @@ export const MyTemplatesPanel = observer(({ store }) => {
         localStorage.setItem(CACHE_KEY, JSON.stringify(updated));
         setMessage(`Uploaded "${file.name}" to GitHub!`);
       } else {
-        // Just load locally if no GitHub token
         store.loadJSON(templateData);
         setMessage(`Loaded "${file.name}" locally (no GitHub token)`);
       }
@@ -335,7 +324,7 @@ export const MyTemplatesPanel = observer(({ store }) => {
     setLoading(false);
   };
 
-  // Export template as JSON file (download)
+  // Export template as JSON file
   const exportTemplate = async (template, event) => {
     event.stopPropagation();
     setLoading(true);
@@ -373,7 +362,7 @@ export const MyTemplatesPanel = observer(({ store }) => {
     <div style={{ height: '100%', padding: 16, display: 'flex', flexDirection: 'column' }}>
       <h3>My Templates</h3>
 
-      {/* GitHub Token Input - only needed for save/upload/delete */}
+      {/* GitHub Token Input */}
       <Callout intent="primary" style={{ marginBottom: 12 }}>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <InputGroup
@@ -440,7 +429,7 @@ export const MyTemplatesPanel = observer(({ store }) => {
 
       {/* Template List */}
       <div style={{ flex: 1, overflowY: 'auto' }}>
-        {/* Fixed: Changed from <p> to <div> to avoid DOM nesting warning */}
+        {/* FIXED: Changed from <p> to <div> to avoid DOM nesting warning */}
         <div style={{ color: '#888', marginBottom: 12, fontSize: '12px', display: 'flex', alignItems: 'center' }}>
           {templates.length} template{templates.length !== 1 ? 's' : ''} from GitHub
           {loading && <Spinner size={14} style={{ marginLeft: 8 }} />}
@@ -459,20 +448,23 @@ export const MyTemplatesPanel = observer(({ store }) => {
             }}
           >
             <div style={{ display: 'flex', gap: 12 }}>
-              {/* Thumbnail */}
+              {/* Thumbnail - FIXED: Using Next.js Image component */}
               <div style={{ 
                 width: 60, 
                 height: 60, 
                 background: '#333',
                 borderRadius: 4,
                 overflow: 'hidden',
-                flexShrink: 0
+                flexShrink: 0,
+                position: 'relative'
               }}>
                 {template.thumbnail ? (
-                  <img 
+                  <Image 
                     src={template.thumbnail} 
                     alt={template.name}
-                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                    fill
+                    style={{ objectFit: 'cover' }}
+                    sizes="60px"
                   />
                 ) : (
                   <div style={{ 
@@ -555,7 +547,7 @@ export const MyTemplatesPanel = observer(({ store }) => {
         <div className={Classes.DIALOG_BODY}>
           {!githubToken && (
             <Callout intent="warning" style={{ marginBottom: 12 }}>
-              GitHub token required to save. Click "Help" for instructions.
+              GitHub token required to save. Click Help for instructions.
             </Callout>
           )}
           <p>Save your current design to the GitHub repository.</p>
@@ -582,7 +574,7 @@ export const MyTemplatesPanel = observer(({ store }) => {
         </div>
       </Dialog>
 
-      {/* Token Help Dialog */}
+      {/* Token Help Dialog - FIXED: Escaped quotes */}
       <Dialog
         isOpen={isTokenDialogOpen}
         onClose={() => setIsTokenDialogOpen(false)}
@@ -598,8 +590,8 @@ export const MyTemplatesPanel = observer(({ store }) => {
           <h4>To get a token (optional):</h4>
           <ol style={{ paddingLeft: 20, lineHeight: 1.6 }}>
             <li>Go to github.com/settings/tokens</li>
-            <li>Click "Generate new token (classic)"</li>
-            <li>Select 'repo' scope</li>
+            <li>Click Generate new token (classic)</li>
+            <li>Select repo scope</li>
             <li>Copy the token and paste it here</li>
           </ol>
           
@@ -630,7 +622,7 @@ export const MyTemplatesPanel = observer(({ store }) => {
         </div>
       </Dialog>
 
-      {/* Preview Dialog */}
+      {/* Preview Dialog - FIXED: Escaped quotes */}
       <Dialog
         isOpen={!!previewTemplate}
         onClose={() => setPreviewTemplate(null)}
@@ -639,17 +631,15 @@ export const MyTemplatesPanel = observer(({ store }) => {
       >
         <div className={Classes.DIALOG_BODY} style={{ padding: 0 }}>
           {previewTemplate?.thumbnail ? (
-            <img 
-              src={previewTemplate.thumbnail} 
-              alt="Template preview"
-              style={{ 
-                maxWidth: '100%', 
-                maxHeight: '60vh', 
-                objectFit: 'contain',
-                display: 'block',
-                margin: '0 auto'
-              }}
-            />
+            <div style={{ position: 'relative', width: '100%', height: '60vh' }}>
+              <Image 
+                src={previewTemplate.thumbnail} 
+                alt="Template preview"
+                fill
+                style={{ objectFit: 'contain' }}
+                sizes="90vw"
+              />
+            </div>
           ) : (
             <Callout intent="warning" style={{ margin: 20 }}>
               No preview available. Load template to see preview.
