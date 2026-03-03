@@ -6,178 +6,364 @@ import { SectionTab } from 'polotno/side-panel';
 import { 
   Button, Card, InputGroup, FileInput, 
   Dialog, Classes, Callout, Tag, Icon,
-  Divider
+  Divider, Spinner
 } from '@blueprintjs/core';
-import { ImagesGrid } from 'polotno/side-panel/images-grid';
 
-const STORAGE_KEY = 'polotno_my_templates';
+// GitHub repo configuration
+const GITHUB_REPO = 'MwangiEric/polotno';
+const GITHUB_BRANCH = 'main';
+const TEMPLATES_PATH = 'public/templates';
+const GITHUB_RAW_URL = `https://raw.githubusercontent.com/${GITHUB_REPO}/${GITHUB_BRANCH}/${TEMPLATES_PATH}`;
+const GITHUB_API_URL = `https://api.github.com/repos/${GITHUB_REPO}/contents/${TEMPLATES_PATH}`;
+
+// LocalStorage only for metadata/cache
+const CACHE_KEY = 'polotno_templates_cache';
 
 export const MyTemplatesPanel = observer(({ store }) => {
   const [templates, setTemplates] = useState([]);
   const [isSaveDialogOpen, setIsSaveDialogOpen] = useState(false);
   const [templateName, setTemplateName] = useState('');
-  const [selectedFile, setSelectedFile] = useState(null);
   const [message, setMessage] = useState('');
   const [previewTemplate, setPreviewTemplate] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [githubToken, setGithubToken] = useState('');
+  const [isTokenDialogOpen, setIsTokenDialogOpen] = useState(false);
 
-  // Load templates from localStorage on mount
+  // Load templates from GitHub on mount
   useEffect(() => {
-    loadTemplates();
+    loadTemplatesFromGitHub();
   }, []);
 
-  const loadTemplates = () => {
+  // Fetch template list from GitHub
+  const loadTemplatesFromGitHub = async () => {
+    setLoading(true);
     try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        setTemplates(JSON.parse(saved));
-      } else {
-        // Try to load default from public/templates
-        loadDefaultTemplate();
-      }
-    } catch (err) {
-      console.error('Failed to load templates from storage:', err);
-    }
-  };
-
-  const loadDefaultTemplate = async () => {
-    try {
-      const response = await fetch('/templates/danco-standard.json');
-      if (response.ok) {
-        const defaultTemplate = await response.json();
-        defaultTemplate.id = 'default-danco';
-        defaultTemplate.isDefault = true;
-        defaultTemplate.created = new Date().toISOString();
-        setTemplates([defaultTemplate]);
-        saveToStorage([defaultTemplate]);
-      }
-    } catch (err) {
-      console.log('No default template found in public/templates');
-    }
-  };
-
-  const saveToStorage = (templateList) => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(templateList));
-  };
-
-  // Save current canvas as template
-  const saveCurrentTemplate = () => {
-    if (!templateName.trim()) {
-      setMessage('Please enter a template name');
-      return;
-    }
-
-    const json = store.toJSON();
-
-    // Generate low-res thumbnail
-    store.toDataURL({ pixelRatio: 0.3 }).then(thumbnail => {
-      const newTemplate = {
-        id: Date.now().toString(),
-        name: templateName.trim(),
-        created: new Date().toISOString(),
-        width: store.width,
-        height: store.height,
-        json,
-        thumbnail,
-        elementCount: json.pages?.[0]?.children?.length || 0
-      };
-
-      const updated = [newTemplate, ...templates];
-      setTemplates(updated);
-      saveToStorage(updated);
-
-      setMessage(`Template "${templateName}" saved!`);
-      setTemplateName('');
-      setIsSaveDialogOpen(false);
-
-      setTimeout(() => setMessage(''), 3000);
-    }).catch(err => {
-      setMessage('Failed to generate thumbnail');
-      console.error(err);
-    });
-  };
-
-  // Upload JSON template file
-  const handleFileUpload = async (event) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    try {
-      const text = await file.text();
-      const json = JSON.parse(text);
-
-      // Basic validation
-      if (!json.pages && !json.json) {
-        throw new Error('Invalid Polotno template format');
+      // Try to get directory listing from GitHub API (no token needed for public repos)
+      const response = await fetch(GITHUB_API_URL);
+      
+      if (!response.ok) {
+        // If API fails (rate limit), try cached list
+        const cached = localStorage.getItem(CACHE_KEY);
+        if (cached) {
+          setTemplates(JSON.parse(cached));
+          setMessage('Loaded from cache. GitHub API rate limited.');
+        } else {
+          // Fallback: try to load known default templates
+          await loadDefaultTemplates();
+        }
+        setLoading(false);
+        return;
       }
 
-      const templateData = json.json || json;
+      const files = await response.json();
+      const jsonFiles = files.filter(f => f.name.endsWith('.json'));
 
-      const newTemplate = {
-        id: Date.now().toString(),
-        name: file.name.replace(/\.json$/i, ''),
-        created: new Date().toISOString(),
-        width: templateData.width || 1080,
-        height: templateData.height || 1920,
-        json: templateData,
-        thumbnail: null, // thumbnail can be generated later if needed
-        elementCount: templateData.pages?.[0]?.children?.length || 0,
-        source: 'uploaded'
-      };
+      // Load metadata for each template
+      const templatesList = await Promise.all(
+        jsonFiles.map(async (file) => {
+          const templateData = await fetchTemplateFromGitHub(file.name);
+          return {
+            id: file.name.replace('.json', ''),
+            name: templateData.name || file.name.replace('.json', '').replace(/-/g, ' '),
+            filename: file.name,
+            created: file.last_modified || new Date().toISOString(),
+            width: templateData.width || 1080,
+            height: templateData.height || 1920,
+            elementCount: templateData.pages?.[0]?.children?.length || 0,
+            thumbnail: templateData.thumbnail || null,
+            source: 'github',
+            sha: file.sha // For updates
+          };
+        })
+      );
 
-      const updated = [newTemplate, ...templates];
-      setTemplates(updated);
-      saveToStorage(updated);
-
-      setMessage(`Uploaded "${file.name}" successfully!`);
-      setSelectedFile(null);
-      setTimeout(() => setMessage(''), 3000);
+      setTemplates(templatesList);
+      // Cache metadata only (small)
+      localStorage.setItem(CACHE_KEY, JSON.stringify(templatesList));
+      
     } catch (err) {
-      setMessage('Error uploading: ' + err.message);
+      console.error('Failed to load from GitHub:', err);
+      // Try cache fallback
+      const cached = localStorage.getItem(CACHE_KEY);
+      if (cached) {
+        setTemplates(JSON.parse(cached));
+        setMessage('Loaded from cache. Could not reach GitHub.');
+      }
+    }
+    setLoading(false);
+  };
+
+  // Fetch individual template JSON from GitHub raw URL (no token needed)
+  const fetchTemplateFromGitHub = async (filename) => {
+    try {
+      const response = await fetch(`${GITHUB_RAW_URL}/${filename}`);
+      if (!response.ok) throw new Error('Failed to fetch template');
+      return await response.json();
+    } catch (err) {
+      console.error(`Error fetching ${filename}:`, err);
+      return {};
     }
   };
 
-  // Load template into current editor
-  const loadTemplate = (template) => {
+  // Load default templates if GitHub fails
+  const loadDefaultTemplates = async () => {
+    const defaultTemplates = [
+      { id: 'danco-standard', name: 'Danco Standard', filename: 'danco-standard.json' }
+    ];
+
+    const loaded = await Promise.all(
+      defaultTemplates.map(async (t) => {
+        const data = await fetchTemplateFromGitHub(t.filename);
+        return {
+          ...t,
+          width: data.width || 1080,
+          height: data.height || 1920,
+          elementCount: data.pages?.[0]?.children?.length || 0,
+          created: new Date().toISOString()
+        };
+      })
+    );
+
+    setTemplates(loaded);
+  };
+
+  // Load template JSON into editor
+  const loadTemplate = async (template) => {
     try {
-      store.loadJSON(template.json);
+      setLoading(true);
+      const json = await fetchTemplateFromGitHub(template.filename);
+      
+      if (!json.pages) {
+        throw new Error('Invalid template format');
+      }
+
+      store.loadJSON(json);
       setMessage(`Loaded "${template.name}"`);
       setTimeout(() => setMessage(''), 2000);
     } catch (err) {
       setMessage('Failed to load template: ' + err.message);
     }
+    setLoading(false);
   };
 
-  // Delete template
-  const deleteTemplate = (id, event) => {
+  // Save current canvas as template (requires GitHub token for push)
+  const saveCurrentTemplate = async () => {
+    if (!templateName.trim()) {
+      setMessage('Please enter a template name');
+      return;
+    }
+
+    if (!githubToken) {
+      setIsTokenDialogOpen(true);
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const json = store.toJSON();
+      const filename = `${templateName.trim().replace(/\s+/g, '-').toLowerCase()}.json`;
+
+      // Generate thumbnail
+      const thumbnail = await store.toDataURL({ pixelRatio: 0.3 });
+
+      const templateData = {
+        name: templateName.trim(),
+        width: store.width,
+        height: store.height,
+        thumbnail: thumbnail, // Store thumbnail in JSON
+        pages: json.pages
+      };
+
+      // Push to GitHub (requires token with repo access)
+      const content = btoa(JSON.stringify(templateData, null, 2));
+      
+      const response = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/contents/${TEMPLATES_PATH}/${filename}`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `token ${githubToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          message: `Add template: ${templateName}`,
+          content: content,
+          branch: GITHUB_BRANCH
+        })
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || 'Failed to save to GitHub');
+      }
+
+      const result = await response.json();
+
+      // Add to local list
+      const newTemplate = {
+        id: filename.replace('.json', ''),
+        name: templateName.trim(),
+        filename: filename,
+        created: new Date().toISOString(),
+        width: store.width,
+        height: store.height,
+        elementCount: json.pages?.[0]?.children?.length || 0,
+        thumbnail: thumbnail,
+        source: 'github',
+        sha: result.content.sha
+      };
+
+      const updated = [newTemplate, ...templates];
+      setTemplates(updated);
+      localStorage.setItem(CACHE_KEY, JSON.stringify(updated));
+
+      setMessage(`Template "${templateName}" saved to GitHub!`);
+      setTemplateName('');
+      setIsSaveDialogOpen(false);
+      setTimeout(() => setMessage(''), 3000);
+
+    } catch (err) {
+      setMessage('Error saving: ' + err.message);
+    }
+    setLoading(false);
+  };
+
+  // Upload JSON template file (local only, then optionally push to GitHub)
+  const handleFileUpload = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setLoading(true);
+    try {
+      const text = await file.text();
+      const json = JSON.parse(text);
+
+      if (!json.pages && !json.width) {
+        throw new Error('Invalid Polotno template format');
+      }
+
+      const templateData = json.pages ? json : { pages: [json] };
+
+      // If GitHub token available, push to repo
+      if (githubToken) {
+        const filename = file.name;
+        const content = btoa(JSON.stringify(templateData, null, 2));
+        
+        const response = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/contents/${TEMPLATES_PATH}/${filename}`, {
+          method: 'PUT',
+          headers: {
+            'Authorization': `token ${githubToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            message: `Upload template: ${filename}`,
+            content: content,
+            branch: GITHUB_BRANCH
+          })
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to upload to GitHub');
+        }
+
+        const result = await response.json();
+        
+        const newTemplate = {
+          id: filename.replace('.json', ''),
+          name: file.name.replace(/\.json$/i, '').replace(/-/g, ' '),
+          filename: filename,
+          created: new Date().toISOString(),
+          width: templateData.width || 1080,
+          height: templateData.height || 1920,
+          elementCount: templateData.pages?.[0]?.children?.length || 0,
+          source: 'github',
+          sha: result.content.sha
+        };
+
+        const updated = [newTemplate, ...templates];
+        setTemplates(updated);
+        localStorage.setItem(CACHE_KEY, JSON.stringify(updated));
+        setMessage(`Uploaded "${file.name}" to GitHub!`);
+      } else {
+        // Just load locally if no GitHub token
+        store.loadJSON(templateData);
+        setMessage(`Loaded "${file.name}" locally (no GitHub token)`);
+      }
+
+      setTimeout(() => setMessage(''), 3000);
+    } catch (err) {
+      setMessage('Error uploading: ' + err.message);
+    }
+    setLoading(false);
+  };
+
+  // Delete template from GitHub
+  const deleteTemplate = async (template, event) => {
     event.stopPropagation();
-    if (!confirm('Delete this template?')) return;
+    if (!confirm(`Delete "${template.name}" from GitHub?`)) return;
 
-    const updated = templates.filter(t => t.id !== id);
-    setTemplates(updated);
-    saveToStorage(updated);
+    if (!githubToken) {
+      setIsTokenDialogOpen(true);
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const response = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/contents/${TEMPLATES_PATH}/${template.filename}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `token ${githubToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          message: `Delete template: ${template.name}`,
+          sha: template.sha,
+          branch: GITHUB_BRANCH
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to delete from GitHub');
+      }
+
+      const updated = templates.filter(t => t.id !== template.id);
+      setTemplates(updated);
+      localStorage.setItem(CACHE_KEY, JSON.stringify(updated));
+      setMessage(`Deleted "${template.name}"`);
+      setTimeout(() => setMessage(''), 3000);
+    } catch (err) {
+      setMessage('Error deleting: ' + err.message);
+    }
+    setLoading(false);
   };
 
-  // Export template as JSON file
-  const exportTemplate = (template, event) => {
+  // Export template as JSON file (download)
+  const exportTemplate = async (template, event) => {
     event.stopPropagation();
+    setLoading(true);
+    
+    try {
+      const json = await fetchTemplateFromGitHub(template.filename);
+      
+      const exportData = {
+        name: template.name,
+        width: template.width,
+        height: template.height,
+        pages: json.pages
+      };
 
-    const exportData = {
-      name: template.name,
-      width: template.width,
-      height: template.height,
-      pages: template.json.pages || template.json
-    };
-
-    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${template.name.replace(/\s+/g, '-').toLowerCase()}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
+      const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = template.filename;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setMessage('Error exporting: ' + err.message);
+    }
+    setLoading(false);
   };
 
-  // Show preview in dialog
+  // Show preview
   const showPreview = (template, event) => {
     event.stopPropagation();
     setPreviewTemplate(template);
@@ -187,22 +373,57 @@ export const MyTemplatesPanel = observer(({ store }) => {
     <div style={{ height: '100%', padding: 16, display: 'flex', flexDirection: 'column' }}>
       <h3>My Templates</h3>
 
+      {/* GitHub Token Input - only needed for save/upload/delete */}
+      <Callout intent="primary" style={{ marginBottom: 12 }}>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <InputGroup
+            small
+            placeholder="GitHub Token (only for save/upload/delete)"
+            value={githubToken}
+            onChange={e => setGithubToken(e.target.value)}
+            type="password"
+            style={{ flex: 1 }}
+          />
+          <Button 
+            small 
+            onClick={() => setIsTokenDialogOpen(true)}
+            icon="key"
+          >
+            Help
+          </Button>
+        </div>
+        {!githubToken && (
+          <div style={{ fontSize: '11px', marginTop: 4, color: '#888' }}>
+            Token only needed to save templates. Reading is free!
+          </div>
+        )}
+      </Callout>
+
       {/* Actions */}
       <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
         <Button 
           intent="primary" 
           icon="floppy-disk"
           onClick={() => setIsSaveDialogOpen(true)}
+          disabled={!githubToken}
           fill
         >
-          Save Current Design
+          Save to GitHub
         </Button>
 
         <FileInput
-          text={selectedFile ? selectedFile.name : 'Upload JSON Template...'}
+          text="Upload JSON..."
           onInputChange={handleFileUpload}
           fill
           buttonText="Browse"
+        />
+
+        <Button
+          minimal
+          icon="refresh"
+          onClick={loadTemplatesFromGitHub}
+          loading={loading}
+          title="Refresh from GitHub"
         />
       </div>
 
@@ -219,9 +440,11 @@ export const MyTemplatesPanel = observer(({ store }) => {
 
       {/* Template List */}
       <div style={{ flex: 1, overflowY: 'auto' }}>
-        <p style={{ color: '#888', marginBottom: 12, fontSize: '12px' }}>
-          {templates.length} template{templates.length !== 1 ? 's' : ''} saved
-        </p>
+        {/* Fixed: Changed from <p> to <div> to avoid DOM nesting warning */}
+        <div style={{ color: '#888', marginBottom: 12, fontSize: '12px', display: 'flex', alignItems: 'center' }}>
+          {templates.length} template{templates.length !== 1 ? 's' : ''} from GitHub
+          {loading && <Spinner size={14} style={{ marginLeft: 8 }} />}
+        </div>
 
         {templates.map(template => (
           <Card 
@@ -281,8 +504,7 @@ export const MyTemplatesPanel = observer(({ store }) => {
                 </div>
                 <div style={{ fontSize: '11px', color: '#666', marginTop: 4 }}>
                   {new Date(template.created).toLocaleDateString()}
-                  {template.isDefault && <Tag intent="primary" minimal style={{ marginLeft: 8 }}>Default</Tag>}
-                  {template.source === 'uploaded' && <Tag intent="warning" minimal style={{ marginLeft: 8 }}>Uploaded</Tag>}
+                  <Tag intent="primary" minimal style={{ marginLeft: 8 }}>GitHub</Tag>
                 </div>
               </div>
 
@@ -302,14 +524,14 @@ export const MyTemplatesPanel = observer(({ store }) => {
                   onClick={(e) => exportTemplate(template, e)}
                   title="Export JSON"
                 />
-                {!template.isDefault && (
+                {githubToken && (
                   <Button 
                     small 
                     minimal 
                     icon="trash"
                     intent="danger"
-                    onClick={(e) => deleteTemplate(template.id, e)}
-                    title="Delete"
+                    onClick={(e) => deleteTemplate(template, e)}
+                    title="Delete from GitHub"
                   />
                 )}
               </div>
@@ -317,9 +539,9 @@ export const MyTemplatesPanel = observer(({ store }) => {
           </Card>
         ))}
 
-        {templates.length === 0 && (
+        {templates.length === 0 && !loading && (
           <Callout intent="primary">
-            No templates saved yet. Save your current design or upload a JSON file.
+            No templates found in GitHub repo. Add a GitHub token to save templates.
           </Callout>
         )}
       </div>
@@ -328,13 +550,18 @@ export const MyTemplatesPanel = observer(({ store }) => {
       <Dialog 
         isOpen={isSaveDialogOpen} 
         onClose={() => setIsSaveDialogOpen(false)}
-        title="Save Current Design as Template"
+        title="Save Template to GitHub"
       >
         <div className={Classes.DIALOG_BODY}>
-          <p>Give your current canvas a name to save it as a reusable template.</p>
+          {!githubToken && (
+            <Callout intent="warning" style={{ marginBottom: 12 }}>
+              GitHub token required to save. Click "Help" for instructions.
+            </Callout>
+          )}
+          <p>Save your current design to the GitHub repository.</p>
           <InputGroup
             large
-            placeholder="Template name (e.g. Luxury Apartment Listing)"
+            placeholder="Template name (e.g. Luxury Phone Poster)"
             value={templateName}
             onChange={e => setTemplateName(e.target.value)}
             autoFocus
@@ -343,7 +570,62 @@ export const MyTemplatesPanel = observer(({ store }) => {
         <div className={Classes.DIALOG_FOOTER}>
           <div className={Classes.DIALOG_FOOTER_ACTIONS}>
             <Button onClick={() => setIsSaveDialogOpen(false)}>Cancel</Button>
-            <Button intent="primary" onClick={saveCurrentTemplate}>Save Template</Button>
+            <Button 
+              intent="primary" 
+              onClick={saveCurrentTemplate}
+              disabled={!githubToken || !templateName.trim()}
+              loading={loading}
+            >
+              Save to GitHub
+            </Button>
+          </div>
+        </div>
+      </Dialog>
+
+      {/* Token Help Dialog */}
+      <Dialog
+        isOpen={isTokenDialogOpen}
+        onClose={() => setIsTokenDialogOpen(false)}
+        title="GitHub Token (Optional)"
+      >
+        <div className={Classes.DIALOG_BODY}>
+          <Callout intent="success" style={{ marginBottom: 12 }}>
+            <strong>Good news!</strong> Since this is a public repo, you can read/download 
+            templates without any token. The token is only needed if you want to 
+            save new templates directly from this app.
+          </Callout>
+          
+          <h4>To get a token (optional):</h4>
+          <ol style={{ paddingLeft: 20, lineHeight: 1.6 }}>
+            <li>Go to github.com/settings/tokens</li>
+            <li>Click "Generate new token (classic)"</li>
+            <li>Select 'repo' scope</li>
+            <li>Copy the token and paste it here</li>
+          </ol>
+          
+          <InputGroup
+            large
+            placeholder="ghp_xxxxxxxxxxxxxxxxxxxx"
+            value={githubToken}
+            onChange={e => setGithubToken(e.target.value)}
+            type="password"
+            style={{ marginTop: 12 }}
+          />
+        </div>
+        <div className={Classes.DIALOG_FOOTER}>
+          <div className={Classes.DIALOG_FOOTER_ACTIONS}>
+            <Button onClick={() => setIsTokenDialogOpen(false)}>Close</Button>
+            <Button 
+              intent="primary" 
+              onClick={() => {
+                setIsTokenDialogOpen(false);
+                if (githubToken) {
+                  setMessage('GitHub token set!');
+                }
+              }}
+            >
+              Save Token
+            </Button>
           </div>
         </div>
       </Dialog>
@@ -370,13 +652,14 @@ export const MyTemplatesPanel = observer(({ store }) => {
             />
           ) : (
             <Callout intent="warning" style={{ margin: 20 }}>
-              No preview available for this template
+              No preview available. Load template to see preview.
             </Callout>
           )}
 
           <div style={{ padding: 16 }}>
             <strong>Dimensions:</strong> {previewTemplate?.width}×{previewTemplate?.height}<br/>
             <strong>Elements:</strong> {previewTemplate?.elementCount}<br/>
+            <strong>File:</strong> {previewTemplate?.filename}<br/>
             <strong>Created:</strong> {previewTemplate?.created && new Date(previewTemplate.created).toLocaleString()}
           </div>
         </div>
