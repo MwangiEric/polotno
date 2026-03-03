@@ -9,6 +9,53 @@ const CORS_PROXY = 'https://cors.ericmwangi13.workers.dev/?url=';
 const GSM_API_BASE = 'https://phapi-kappa.vercel.app/specs-image?device=';
 const WSRV = 'https://wsrv.nl/?url=';
 
+const generateId = () => Math.random().toString(36).substr(2, 9);
+
+// Helper to preload image with timeout and CORS handling
+const preloadImage = (src, timeout = 10000) => {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const timer = setTimeout(() => {
+      reject(new Error('Image load timeout'));
+    }, timeout);
+
+    img.onload = () => {
+      clearTimeout(timer);
+      resolve(src);
+    };
+
+    img.onerror = () => {
+      clearTimeout(timer);
+      reject(new Error('Image load error'));
+    };
+
+    img.crossOrigin = 'anonymous';
+    img.src = src;
+  });
+};
+
+// Helper to fetch image through CORS proxy if direct load fails
+const fetchImageWithFallback = async (src) => {
+  try {
+    await preloadImage(src, 5000);
+    return src;
+  } catch (err) {
+    console.log('Direct image load failed, trying CORS proxy:', src);
+  }
+
+  if (!src.includes('wsrv.nl')) {
+    try {
+      const proxyUrl = CORS_PROXY + src;
+      await preloadImage(proxyUrl, 8000);
+      return proxyUrl;
+    } catch (err) {
+      console.log('CORS proxy image load also failed:', src);
+    }
+  }
+
+  return src;
+};
+
 export const GsmPanel = observer(({ store }) => {
   const [singleInput, setSingleInput] = useState('');
   const [batchInput, setBatchInput] = useState('');
@@ -16,15 +63,17 @@ export const GsmPanel = observer(({ store }) => {
   const [error, setError] = useState('');
   const [filledElements, setFilledElements] = useState(0);
   const [autoDownload, setAutoDownload] = useState(false);
+  const [feedback, setFeedback] = useState('');
 
   const fetchGsmSpecs = async (deviceName) => {
     if (!deviceName.trim()) return null;
 
-    const query = deviceName.trim().toLowerCase();
-    const apiUrl = GSM_API_BASE + encodeURIComponent(query);
-    const proxyUrl = CORS_PROXY + encodeURIComponent(apiUrl);
+    const query = deviceName.trim();
+    const apiUrl = GSM_API_BASE + query;
+    const proxyUrl = CORS_PROXY + apiUrl;
 
     try {
+      console.log('Fetching GSM:', proxyUrl);
       const res = await fetch(proxyUrl, {
         headers: { Accept: 'application/json' }
       });
@@ -36,13 +85,11 @@ export const GsmPanel = observer(({ store }) => {
 
       const images = [];
       if (data.image_2) {
-        const src = data.image_2;
-        const wsrvUrl = WSRV + encodeURIComponent(src) + '&w=800&h=800&fit=contain&output=png';
+        const wsrvUrl = WSRV + data.image_2 + '&w=800&h=800&fit=contain&output=png';
         images.push(wsrvUrl);
       }
       if (data.image_1) {
-        const src = data.image_1;
-        const wsrvUrl = WSRV + encodeURIComponent(src) + '&w=800&h=800&fit=contain&output=png';
+        const wsrvUrl = WSRV + data.image_1 + '&w=800&h=800&fit=contain&output=png';
         images.push(wsrvUrl);
       }
 
@@ -68,40 +115,52 @@ export const GsmPanel = observer(({ store }) => {
     }
   };
 
+  // Use same logic as product-images-search section
   const duplicateTemplatePage = (templatePage) => {
-    const newPage = store.addPage({
-      width: templatePage.width,
-      height: templatePage.height,
-      background: templatePage.background || '#ffffff'
+    const templateData = templatePage.toJSON();
+    
+    // Store uploaded images (non-template images like logos)
+    const uploadedImages = {};
+    templatePage.children.forEach((el, idx) => {
+      if (el.type === 'image') {
+        const name = el.name || '';
+        // Check if this is a template image placeholder
+        const isTemplateImage = name.match(/\{\{image\d+\}\}/i) || name.match(/^image\d+$/i);
+        // Only store if it's NOT a template image (i.e., it's a logo or uploaded image)
+        if (!isTemplateImage && el.src) {
+          uploadedImages[idx] = el.src;
+        }
+      }
     });
 
-    templatePage.children.forEach(child => {
-      const cleanData = {
-        type: child.type,
-        name: child.name,
-        x: child.x,
-        y: child.y,
-        width: child.width,
-        height: child.height,
-        rotation: child.rotation || 0,
-        opacity: child.opacity || 1,
-        visible: child.visible !== false
-      };
+    const newPage = store.addPage({
+      width: templateData.width,
+      height: templateData.height,
+      background: templateData.background
+    });
 
-      if (child.type === 'text') {
-        cleanData.text = child.text || '';
-        cleanData.fontSize = child.fontSize;
-        cleanData.fill = child.fill;
-        cleanData.align = child.align || 'left';
-        cleanData.fontFamily = child.fontFamily;
+    templateData.children.forEach((child, idx) => {
+      const elementData = JSON.parse(JSON.stringify(child));
+      elementData.id = generateId();
+
+      if (elementData.type === 'image') {
+        const name = elementData.name || '';
+        const isTemplateImage = name.match(/\{\{image\d+\}\}/i) || name.match(/^image\d+$/i);
+        
+        if (isTemplateImage) {
+          // Clear template image placeholders
+          elementData.src = '';
+          elementData.cropX = 0;
+          elementData.cropY = 0;
+          elementData.cropWidth = 1;
+          elementData.cropHeight = 1;
+        } else {
+          // Preserve uploaded images (logos, etc.)
+          elementData.src = uploadedImages[idx] || '';
+        }
       }
 
-      if (child.type === 'image') {
-        cleanData.src = '';
-        cleanData.keepRatio = child.keepRatio !== false;
-      }
-
-      newPage.addElement(cleanData);
+      newPage.addElement(elementData);
     });
 
     return newPage;
@@ -135,7 +194,8 @@ export const GsmPanel = observer(({ store }) => {
 
         Object.keys(dataMap).forEach(k => {
           if (!k.includes('image') && (el.name === k || txt.includes(k))) {
-            txt = txt.replace(new RegExp(k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'), dataMap[k]);
+            const escapedK = k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            txt = txt.replace(new RegExp(escapedK, 'gi'), dataMap[k]);
             changed = true;
           }
         });
@@ -147,28 +207,69 @@ export const GsmPanel = observer(({ store }) => {
       }
     });
 
-    // Fill images sequentially (1 second delay each)
-    const imageElements = page.children.filter(el => el.type === 'image');
-
-    for (let i = 0; i < imageElements.length; i++) {
-      const el = imageElements[i];
-
-      let srcToSet = null;
-      Object.keys(dataMap).forEach(k => {
-        if (k.includes('image') && el.name === k) {
-          srcToSet = dataMap[k];
-        }
-      });
-
-      if (srcToSet) {
-        await new Promise(resolve => {
-          setTimeout(() => {
-            el.set({ src: srcToSet });
-            updatedCount++;
-            resolve();
-          }, i * 1000);
-        });
+    // Collect template image elements to fill
+    const imageElements = [];
+    page.children.forEach(el => {
+      if (el.type !== 'image') return;
+      
+      const name = el.name || '';
+      const match = name.match(/\{\{image(\d+)\}\}/i) || name.match(/^image(\d+)$/i);
+      
+      if (!match) return;
+      
+      const idx = parseInt(match[1]) - 1;
+      const src = deviceData.images[idx];
+      
+      if (src) {
+        imageElements.push({ el, src, idx, key: match[0] });
       }
+    });
+
+    // Pre-load images first
+    console.log('Pre-loading', imageElements.length, 'images...');
+    const loadedImages = await Promise.allSettled(
+      imageElements.map(async ({ src }) => {
+        try {
+          const finalSrc = await fetchImageWithFallback(src);
+          return { success: true, src: finalSrc, originalSrc: src };
+        } catch (err) {
+          console.warn('Failed to load image:', src, err);
+          return { success: false, src, originalSrc: src };
+        }
+      })
+    );
+
+    // Set images sequentially with delays
+    for (let i = 0; i < imageElements.length; i++) {
+      const { el, key } = imageElements[i];
+      const loadResult = loadedImages[i];
+      
+      let srcToSet = '';
+      if (loadResult.status === 'fulfilled' && loadResult.value.success) {
+        srcToSet = loadResult.value.src;
+        console.log(`Setting image ${key}:`, srcToSet.substring(0, 100) + '...');
+      } else {
+        console.warn(`Image ${key} failed to load, skipping`);
+      }
+
+      await new Promise(resolve => {
+        setTimeout(() => {
+          if (srcToSet) {
+            el.set({ 
+              src: srcToSet,
+              visible: true,
+              cropX: 0,
+              cropY: 0,
+              cropWidth: 1,
+              cropHeight: 1
+            });
+            updatedCount++;
+          } else {
+            el.set({ visible: false });
+          }
+          resolve();
+        }, i * 1000);
+      });
     }
 
     return updatedCount;
@@ -176,7 +277,7 @@ export const GsmPanel = observer(({ store }) => {
 
   const downloadPage = async (page, productName) => {
     try {
-      await new Promise(r => setTimeout(r, 1500));
+      await new Promise(r => setTimeout(r, 2000));
 
       const safeName = (productName || 'product')
         .replace(/[^a-z0-9\s-]/gi, '')
@@ -213,6 +314,7 @@ export const GsmPanel = observer(({ store }) => {
     setLoading(true);
     setError('');
     setFilledElements(0);
+    setFeedback('');
 
     const deviceData = await fetchGsmSpecs(deviceName);
 
@@ -222,7 +324,14 @@ export const GsmPanel = observer(({ store }) => {
       return;
     }
 
-    const newPage = duplicateTemplatePage(store.activePage);
+    const templatePage = store.activePage;
+    if (!templatePage) {
+      setError('No template page selected');
+      setLoading(false);
+      return;
+    }
+
+    const newPage = duplicateTemplatePage(templatePage);
     store.selectPage(newPage.id);
 
     const updated = await fillPage(newPage, deviceData, 'KSh ' + Number(price).toLocaleString());
@@ -242,29 +351,28 @@ export const GsmPanel = observer(({ store }) => {
       return;
     }
 
+    const templatePage = store.activePage;
+    if (!templatePage) {
+      setError('No template page selected');
+      return;
+    }
+
     setLoading(true);
     setError('');
     setFilledElements(0);
 
     let totalUpdated = 0;
-    const templatePage = store.activePage;
-
-    if (!templatePage) {
-      setError('No template page selected');
-      setLoading(false);
-      return;
-    }
 
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i].trim();
-      setFeedback(`Processing \( {i + 1}/ \){lines.length}: ${line}`);
+      setFeedback(`Processing ${i + 1}/${lines.length}: ${line}`);
 
       const newPage = duplicateTemplatePage(templatePage);
       store.selectPage(newPage.id);
 
       const deviceData = await fetchGsmSpecs(line);
       if (!deviceData) {
-        setFeedback(`No match for \( {line} ( \){i + 1}/${lines.length})`);
+        setFeedback(`No match for ${line} (${i + 1}/${lines.length})`);
         continue;
       }
 
@@ -275,72 +383,28 @@ export const GsmPanel = observer(({ store }) => {
       }
 
       totalUpdated += updated;
-      setFeedback(`Filled: \( {deviceData.name} ( \){i + 1}/\( {lines.length}) \){autoDownload ? ' + downloaded' : ''}`);
-      await new Promise(r => setTimeout(r, 1500));
+      setFeedback(`Filled: ${deviceData.name} (${i + 1}/${lines.length})${autoDownload ? ' + downloaded' : ''}`);
+      await new Promise(r => setTimeout(r, 2000));
     }
+
+    store.selectPage(templatePage.id);
 
     setFilledElements(totalUpdated);
     setLoading(false);
-    setFeedback(`Batch complete! Filled ${lines.length} posters.`);
-  };
-
-  const duplicateTemplatePage = (templatePage) => {
-    const newPage = store.addPage({
-      width: templatePage.width,
-      height: templatePage.height,
-      background: templatePage.background || '#ffffff'
-    });
-
-    templatePage.children.forEach(child => {
-      const cleanData = {
-        type: child.type,
-        name: child.name,
-        x: child.x,
-        y: child.y,
-        width: child.width,
-        height: child.height,
-        rotation: child.rotation || 0,
-        opacity: child.opacity || 1,
-        visible: child.visible !== false
-      };
-
-      if (child.type === 'text') {
-        cleanData.text = child.text || '';
-        cleanData.fontSize = child.fontSize;
-        cleanData.fill = child.fill;
-        cleanData.align = child.align || 'left';
-        cleanData.fontFamily = child.fontFamily;
-      }
-
-      if (child.type === 'image') {
-        cleanData.src = '';
-        cleanData.keepRatio = child.keepRatio !== false;
-      }
-
-      newPage.addElement(cleanData);
-    });
-
-    return newPage;
+    setFeedback(`Batch complete! Created ${lines.length} new filled pages. Original template untouched.`);
   };
 
   return (
     <div style={{ height: '100%', padding: 16, display: 'flex', flexDirection: 'column' }}>
       <h3 style={{ marginTop: 0 }}>GSM Arena Specs + Price Fill</h3>
       <p style={{ marginBottom: 16, color: '#aaa', fontSize: '14px' }}>
-        Single: device name price<br />
-        Batch: one per line (device name [ram/storage] price)
+        Original template page stays untouched — each fill creates a new page
       </p>
-
-      <div style={{ marginBottom: 12 }}>
-        <Tag intent="primary" minimal style={{ fontSize: 11 }}>
-          Supported placeholders: name, price, spec1 to spec5, image1 to image4
-        </Tag>
-      </div>
 
       <Checkbox
         checked={autoDownload}
         onChange={e => setAutoDownload(e.target.checked)}
-        label="Auto-download each filled poster as PNG"
+        label="Auto-download each filled page as PNG"
         style={{ marginBottom: 16 }}
       />
 
@@ -362,7 +426,7 @@ export const GsmPanel = observer(({ store }) => {
           loading={loading}
           disabled={loading || !singleInput.trim()}
         >
-          Fill Single
+          Fill Single (new page)
         </Button>
       </div>
 
@@ -370,7 +434,7 @@ export const GsmPanel = observer(({ store }) => {
         large
         fill
         growVertically
-        placeholder="Batch mode - one per line:\nSamsung a56 8gb/256gb 50000\niPhone 16 Pro 120000"
+        placeholder={'Batch mode - one per line:\nSamsung a56 8gb/256gb 50000\niPhone 16 Pro 120000'}
         value={batchInput}
         onChange={e => setBatchInput(e.target.value)}
         style={{ minHeight: 100, marginBottom: 12 }}
@@ -385,8 +449,14 @@ export const GsmPanel = observer(({ store }) => {
         disabled={loading || !batchInput.trim()}
         style={{ marginBottom: 16 }}
       >
-        Fill Batch
+        Fill Batch (new pages)
       </Button>
+
+      {feedback && (
+        <Callout intent="primary" style={{ marginBottom: 12 }}>
+          {feedback}
+        </Callout>
+      )}
 
       {error && (
         <Callout intent="danger" style={{ marginBottom: 16 }}>
