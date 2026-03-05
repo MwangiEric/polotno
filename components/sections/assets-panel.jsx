@@ -356,7 +356,7 @@ export const AssetsPanel = observer(({ store }) => {
         <Callout intent="primary" style={{ margin: 20 }}>
           Search for product images with filters.
           <br /><br />
-          <strong>Tip:</strong> Enable "Transparent" for PNGs with no background.
+          <strong>Tip:</strong> Enable Transparent for PNGs with no background.
         </Callout>
       );
     }
@@ -820,3 +820,4 @@ export const AssetsSection = {
   ),
   Panel: AssetsPanel,
 };
+
