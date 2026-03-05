@@ -243,7 +243,7 @@ export const AssetsPanel = observer(({ store }) => {
       if (images.length === 0) {
         setMessage('No images found matching your criteria.');
       } else {
-        setMessage(`Found ${images.length} images`);
+        setMessage(`Found images`);
       }
       
     } catch (err) {
