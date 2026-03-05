@@ -21,7 +21,12 @@ import { RealEstateSection } from './sections/realestate'; // ← FIXED: Added m
 import { MyTemplatesSection } from './sections/my-templates';
 import { KtSection } from './sections/kt';
 import { GsmSection } from './sections/gsm';
+import { SpkSection } from './sections/spk';
+import { TemplateExporterSection } from './sections/template-exporter';
 import { ProductImagesSearchSection } from './sections/product-images-search';
+import { AssetsSection } from './sections/assets-panel';
+import { ExportToolsSection } from './sections/export-tools';
+
 
 
 // Create Polotno store (use your real key from Vercel env)
@@ -41,9 +46,13 @@ const mySections = [
   PexelsSection,                // Pexels free stock photos
   RealEstateSection,            // Real Estate scraper & poster generator
 MyTemplatesSection,
+AssetsSection,
   KtSection,
   GsmSection,
-ProductImagesSearchSection,
+  SpkSection,
+  TemplateExporterSection,
+  ExportToolsSection,
+  ProductImagesSearchSection,
 ];
 
 export default function Editor() {
