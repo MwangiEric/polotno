@@ -126,12 +126,12 @@ export const MasterPanel = observer(({ store }) => {
     setLoading(true);
     setError('');
     try {
-      const response = await fetch('/data/products.csv');
+      const response = await fetch('/data/avechi.csv');
       if (!response.ok) throw new Error('Failed to load CSV');
       const csvText = await response.text();
       processCSVData(csvText);
     } catch (err) {
-      setError('Local CSV not found. Upload to public/data/products.csv or use Google Sheets');
+      setError('Local CSV not found. Upload to public/data/avechi.csv or use Google Sheets');
       setProducts([]);
       setFilteredProducts([]);
     } finally {
@@ -348,7 +348,7 @@ export const MasterPanel = observer(({ store }) => {
           value={dataSource}
           onChange={(e) => setDataSource(e.target.value)}
           options={[
-            { value: 'local', label: 'Local CSV (public/data/products.csv)' },
+            { value: 'local', label: 'Local CSV (public/data/avechi.csv)' },
             { value: 'sheets', label: 'Google Sheets' }
           ]}
         />
@@ -356,7 +356,7 @@ export const MasterPanel = observer(({ store }) => {
 
       {dataSource === 'local' ? (
         <Callout intent="primary">
-          Place your CSV file at <code>public/data/products.csv</code>
+          Place your CSV file at <code>public/data/avechi.csv</code>
         </Callout>
       ) : (
         <div>
