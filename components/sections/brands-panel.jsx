@@ -285,8 +285,8 @@ export const BrandsPanel = observer(({ store }) => {
         <ol style={{ margin: 0, paddingLeft: 16, fontSize: 12, color: '#aaa' }}>
           <li>Select brand and click Generate</li>
           <li>Switch to <strong>Gadgets</strong> tab</li>
-          <li>Search for product (e.g., "Samsung S24")</li>
-          <li>Click "Add to Canvas" to auto-fill</li>
+          <li>Search for product (e.g., Samsung S24)</li>
+          <li>Click Add to Canvas to auto-fill</li>
           <li>Or use Batch Fill for multiple products</li>
         </ol>
       </div>
