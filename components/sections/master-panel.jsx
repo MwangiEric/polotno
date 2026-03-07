@@ -535,8 +535,8 @@ export const MasterPanel = observer(({ store }) => {
       <div style={{ padding: 16, borderBottom: '1px solid #333' }}>
         <h3 style={{ margin: 0 }}>Master Catalog</h3>
         <p style={{ fontSize: 11, color: '#888', margin: '4px 0 0 0' }}>
-          {products.length} products • {{name}} {{price}} {{image1}}-{{image4}}
-        </p>
+  {products.length} products • {'{{name}} {{price}} {{image1}}-{{image4}}'}
+</p>
       </div>
 
       <Tabs selectedTabId="products" style={{ flex: 1, overflow: 'hidden' }}>
