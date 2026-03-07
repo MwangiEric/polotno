@@ -17,7 +17,7 @@ import { ImagApiSection } from './sections/imagapi';
 import { BtchImgSection } from './sections/btchimg';
 import { JsonViewerSection } from './sections/json-viewer';
 import { PexelsSection } from './sections/pexels';
-import { RealEstateSection } from './sections/realestate'; // ← FIXED: Added missing import
+import { RealEstateSection } from './sections/realestate';
 import { MyTemplatesSection } from './sections/my-templates';
 import { KtSection } from './sections/kt';
 import { GsmSection } from './sections/gsm';
@@ -26,12 +26,12 @@ import { TemplateExporterSection } from './sections/template-exporter';
 import { ProductImagesSearchSection } from './sections/product-images-search';
 import { AssetsSection } from './sections/assets-panel';
 import { ExportToolsSection } from './sections/export-tools';
-
-
+import { BrandsSection } from './sections/brands-panel';        // ← NEW: Brand templates
+import { MasterSection } from './sections/master-panel';       // ← NEW: Master catalog
 
 // Create Polotno store (use your real key from Vercel env)
 const store = createStore({
-  key: process.env.NEXT_PUBLIC_POLOTNO_API_KEY || 'demo-key', // fallback for local dev
+  key: process.env.NEXT_PUBLIC_POLOTNO_API_KEY || 'demo-key',
   showCredit: false,
 });
 
@@ -45,14 +45,16 @@ const mySections = [
   JsonViewerSection,            // JSON viewer + export
   PexelsSection,                // Pexels free stock photos
   RealEstateSection,            // Real Estate scraper & poster generator
-MyTemplatesSection,
-AssetsSection,
-  KtSection,
-  GsmSection,
-  SpkSection,
-  TemplateExporterSection,
-  ExportToolsSection,
-  ProductImagesSearchSection,
+  MyTemplatesSection,           // My templates
+  AssetsSection,                // Assets & Images panel
+  KtSection,                    // KenyaTronics
+  GsmSection,                   // GSM Arena
+  SpkSection,                   // Smartphones Kenya
+  TemplateExporterSection,      // Template exporter
+  ExportToolsSection,           // Export tools
+  ProductImagesSearchSection,   // Gadgets / Batch Fill
+  BrandsSection,                // ← NEW: Brand templates (Kenyatronics, Tripple K)
+  MasterSection,                // ← NEW: Master catalog with CSV/Google Sheets
 ];
 
 export default function Editor() {
@@ -62,7 +64,7 @@ export default function Editor() {
         <SidePanel
           store={store}
           sections={mySections}
-          defaultSection="templates" // starts on official templates gallery
+          defaultSection="templates"
         />
       </SidePanelWrap>
 
