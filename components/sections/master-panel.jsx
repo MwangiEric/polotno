@@ -6,27 +6,28 @@ import { SectionTab } from 'polotno/side-panel';
 import { 
   Button, InputGroup, HTMLSelect, Card, Tag,
   Checkbox, Callout, Spinner, NonIdealState,
-  Tabs, Tab, FormGroup
+  Tabs, Tab, FormGroup, TextArea
 } from '@blueprintjs/core';
 
 const generateId = () => Math.random().toString(36).substr(2, 9);
 const WSRV_BASE = 'https://wsrv.nl/?url=';
 
-// Decode HTML entities
+// Decode HTML entities - remove quotes
 const decodeHtmlEntities = (text) => {
   if (!text) return '';
   const textarea = document.createElement('textarea');
   textarea.innerHTML = text;
-  return textarea.value;
+  return textarea.value.replace(/["]/g, ''); // Remove quotes
 };
 
-// Get WSRV optimized URL
+// Get WSRV URL - NO TRIM
 const getWsrvUrl = (originalUrl, options = {}) => {
   const { width = 800, height = 800, output = 'webp' } = options;
-  return `${WSRV_BASE}${originalUrl}&w=${width}&h=${height}&fit=contain&output=${output}&n=-1`;
+  // Don't trim - causes cropping issues
+  return `${WSRV_BASE}${originalUrl}&w=${width}&h=${height}&fit=contain&output=${output}`;
 };
 
-// Parse CSV text to array of objects
+// Parse CSV
 const parseCSV = (csvText) => {
   const lines = csvText.trim().split('\n');
   if (lines.length < 2) return [];
@@ -64,7 +65,7 @@ const parseCSV = (csvText) => {
   return results;
 };
 
-// Parse specs and convert to {{spec1}}, {{spec2}} format
+// Parse specs without quotes
 const parseSpecsToVariables = (description) => {
   if (!description) return { specs: [], specMap: {} };
   
@@ -81,63 +82,52 @@ const parseSpecsToVariables = (description) => {
     const match = line.match(/^([^:]+):\s*(.+)$/);
     if (match) {
       const label = match[1].trim();
-      const value = match[2].trim();
+      const value = match[2].trim().replace(/["]/g, ''); // Remove quotes
       const varName = `{{spec${idx + 1}}}`;
       specMap[varName] = value;
       specs.push({ label, value, varName });
     } else {
       const varName = `{{spec${idx + 1}}}`;
-      specMap[varName] = line;
-      specs.push({ label: '', value: line, varName });
+      const cleanLine = line.replace(/["]/g, '');
+      specMap[varName] = cleanLine;
+      specs.push({ label: '', value: cleanLine, varName });
     }
   });
   
   return { specs, specMap };
 };
 
-// Format price
+// Format price without quotes
 const formatPrice = (priceStr) => {
   if (!priceStr) return 'N/A';
   const num = parseInt(priceStr.replace(/[^0-9]/g, ''), 10);
-  if (isNaN(num)) return priceStr;
+  if (isNaN(num)) return priceStr.replace(/["]/g, '');
   return `KSh ${num.toLocaleString()}`;
 };
 
 export const MasterPanel = observer(({ store }) => {
-  const [dataSource, setDataSource] = useState('local');
+  const [dataSource, setDataSource] = useState('sheets'); // Default to sheets
   const [products, setProducts] = useState([]);
   const [filteredProducts, setFilteredProducts] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
-  const [sheetsUrl, setSheetsUrl] = useState('');
+  const [sheetsUrl, setSheetsUrl] = useState('https://docs.google.com/spreadsheets/d/e/2PACX-1vTvc7LXgvXH-HsSpoKmYucYogZ4ESuqZ7spi7LQ5mkFTZu0hyqMaD3ycDpETSnesEo4pQsQdZArxvc-/pub?output=csv');
   const [message, setMessage] = useState('');
   const [autoDownload, setAutoDownload] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState(null);
+  
+  // Batch mode states
+  const [batchInput, setBatchInput] = useState('');
+  const [activeTab, setActiveTab] = useState('products'); // 'products' or 'batch'
 
+  // Auto-load on mount
   useEffect(() => {
-    if (dataSource === 'local') {
-      loadLocalCSV();
+    if (dataSource === 'sheets' && sheetsUrl) {
+      loadGoogleSheet();
     }
-  }, [dataSource]);
-
-  const loadLocalCSV = async () => {
-    setLoading(true);
-    setError('');
-    try {
-      const response = await fetch('/data/avechi.csv');
-      if (!response.ok) throw new Error('Failed to load CSV');
-      const csvText = await response.text();
-      processCSVData(csvText);
-    } catch (err) {
-      setError('Local CSV not found. Upload to public/data/avechi.csv or use Google Sheets');
-      setProducts([]);
-      setFilteredProducts([]);
-    } finally {
-      setLoading(false);
-    }
-  };
+  }, []);
 
   const loadGoogleSheet = async () => {
     if (!sheetsUrl.trim()) {
@@ -160,7 +150,7 @@ export const MasterPanel = observer(({ store }) => {
       const csvText = await response.text();
       processCSVData(csvText);
     } catch (err) {
-      setError('Failed to load Google Sheet. Make sure it\'s published to web.');
+      setError('Failed to load Google Sheet. Check URL and publish settings.');
     } finally {
       setLoading(false);
     }
@@ -172,7 +162,7 @@ export const MasterPanel = observer(({ store }) => {
     const transformed = data.map((row, idx) => {
       const { specs, specMap } = parseSpecsToVariables(row.shortDescription);
       
-      // Get up to 4 images with WSRV optimization
+      // Get images - up to 4, NO TRIM in WSRV
       const rawImages = [
         row['images/0/src'],
         row['images/1/src'],
@@ -191,13 +181,12 @@ export const MasterPanel = observer(({ store }) => {
         specs,
         specMap,
         url: row.url,
-        // WSRV optimized images for {{image1}} to {{image4}}
+        // WSRV images - NO TRIM parameter
         images: rawImages.map((url, i) => ({
           original: url,
           wsrv: getWsrvUrl(url, { width: 800, height: 800 }),
           varName: `{{image${i + 1}}}`
         })),
-        // Keep original URLs for full resolution
         originalImages: rawImages
       };
     }).filter(p => p.name);
@@ -208,6 +197,7 @@ export const MasterPanel = observer(({ store }) => {
     setTimeout(() => setMessage(''), 2000);
   };
 
+  // Filter products
   useEffect(() => {
     let filtered = products;
     
@@ -232,35 +222,9 @@ export const MasterPanel = observer(({ store }) => {
     return ['all', ...cats];
   };
 
-  const createCleanPage = (templatePage) => {
-    if (!templatePage) {
-      const newPage = store.addPage({ width: 1080, height: 1080 });
-      return newPage;
-    }
-
-    const templateData = templatePage.toJSON();
-    const newPage = store.addPage({
-      width: templateData.width,
-      height: templateData.height,
-      background: templateData.background
-    });
-
-    const preservedElements = templatePage.children.filter(el => {
-      const name = el.name || '';
-      return !name.includes('{{') && !name.match(/^image\d+$/);
-    });
-
-    preservedElements.forEach(el => {
-      const data = JSON.parse(JSON.stringify(el.toJSON()));
-      data.id = generateId();
-      newPage.addElement(data);
-    });
-
-    return newPage;
-  };
-
+  // MAINTAIN TEMPLATE - Don't replace, fill current page
   const fillProductToPage = async (page, product) => {
-    // Build complete text map with {{name}}, {{price}}, {{spec1}}-{{spec8}}
+    // Build text map
     const textMap = {
       '{{name}}': product.name,
       '{{price}}': product.price,
@@ -268,7 +232,7 @@ export const MasterPanel = observer(({ store }) => {
       ...product.specMap
     };
 
-    // Fill all text elements
+    // Fill text elements
     page.children.forEach(el => {
       if (el.type !== 'text') return;
       
@@ -286,13 +250,11 @@ export const MasterPanel = observer(({ store }) => {
       if (changed) el.set({ text: newText });
     });
 
-    // Fill images - match {{image1}}, {{image2}}, {{image3}}, {{image4}}
-    const imageElements = [];
+    // Fill images - match {{image1}} to {{image4}}
     page.children.forEach(el => {
       if (el.type !== 'image') return;
       const name = el.name || '';
       
-      // Match {{image1}}, {{image2}}, {{image3}}, {{image4}}
       const match = name.match(/\{\{image([1-4])\}\}/i);
       if (!match) return;
       
@@ -300,92 +262,117 @@ export const MasterPanel = observer(({ store }) => {
       const imageData = product.images[idx];
       
       if (imageData) {
-        imageElements.push({ 
-          el, 
-          src: imageData.wsrv,  // WSRV optimized
-          original: imageData.original,
-          varName: imageData.varName
+        el.set({ 
+          src: imageData.wsrv,
+          visible: true,
+          cropX: 0, cropY: 0, cropWidth: 1, cropHeight: 1
         });
       }
     });
-
-    for (const { el, src } of imageElements) {
-      el.set({ 
-        src, 
-        visible: true,
-        cropX: 0, cropY: 0, cropWidth: 1, cropHeight: 1
-      });
-      await new Promise(r => setTimeout(r, 100));
-    }
   };
 
+  // Single add - maintain template on current page
   const addToCanvas = async (product) => {
     setSelectedProduct(product);
-    const templatePage = store.activePage;
-    const newPage = createCleanPage(templatePage);
-    store.selectPage(newPage.id);
+    const currentPage = store.activePage;
     
-    await fillProductToPage(newPage, product);
+    await fillProductToPage(currentPage, product);
     
     if (autoDownload) {
       await new Promise(r => setTimeout(r, 500));
-      const url = await store.toDataURL({ pageId: newPage.id, mimeType: 'image/png', quality: 1 });
+      const url = await store.toDataURL({ pageId: currentPage.id, mimeType: 'image/png', quality: 1 });
       const link = document.createElement('a');
       link.download = `${product.name.replace(/[^a-z0-9]/gi, '-').toLowerCase()}.png`;
       link.href = url;
       link.click();
     }
     
-    setMessage(`Added: ${product.name} with {{name}}, {{price}}, {{image1}}-{{image4}}`);
-    setTimeout(() => setMessage(''), 3000);
+    setMessage(`Filled: ${product.name}`);
+    setTimeout(() => setMessage(''), 2000);
   };
 
-  const renderDataSourceTab = () => (
-    <div style={{ padding: 12 }}>
-      <FormGroup label="Data Source">
-        <HTMLSelect
-          fill
-          value={dataSource}
-          onChange={(e) => setDataSource(e.target.value)}
-          options={[
-            { value: 'local', label: 'Local CSV (public/data/avechi.csv)' },
-            { value: 'sheets', label: 'Google Sheets' }
-          ]}
-        />
-      </FormGroup>
+  // BATCH MODE - Fill multiple products
+  const handleBatchFill = async () => {
+    const lines = batchInput.trim().split('\n').filter(Boolean);
+    if (lines.length === 0) {
+      setError('Enter at least one product name');
+      return;
+    }
 
-      {dataSource === 'local' ? (
-        <Callout intent="primary">
-          Place your CSV file at <code>public/data/avechi.csv</code>
-        </Callout>
-      ) : (
-        <div>
-          <FormGroup label="Google Sheets CSV URL">
-            <InputGroup
-              fill
-              placeholder="https://docs.google.com/spreadsheets/.../pub?output=csv"
-              value={sheetsUrl}
-              onChange={(e) => setSheetsUrl(e.target.value)}
-            />
-          </FormGroup>
-          <Button 
-            fill 
-            intent="primary" 
-            onClick={loadGoogleSheet}
-            loading={loading}
-          >
-            Load from Google Sheets
-          </Button>
-        </div>
-      )}
+    setLoading(true);
+    setError('');
+    setMessage(`Starting batch: ${lines.length} products...`);
 
-      {error && (
-        <Callout intent="danger" style={{ marginTop: 12 }}>
-          {error}
-        </Callout>
-      )}
-    </div>
-  );
+    const templatePage = store.activePage;
+    let filled = 0;
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim();
+      setMessage(`Processing ${i + 1}/${lines.length}: ${line}...`);
+
+      // Find matching product
+      const searchLower = line.toLowerCase();
+      const match = products.find(p => 
+        p.name.toLowerCase().includes(searchLower) ||
+        p.name.toLowerCase() === searchLower
+      );
+
+      if (!match) {
+        setMessage(`Not found: ${line} (${i + 1}/${lines.length})`);
+        continue;
+      }
+
+      // Create new page from template for each product
+      if (i > 0) {
+        const newPage = store.addPage({
+          width: templatePage.width,
+          height: templatePage.height,
+          background: templatePage.background
+        });
+        store.selectPage(newPage.id);
+        
+        // Copy template elements
+        const templateData = templatePage.toJSON();
+        templateData.children.forEach(child => {
+          const data = JSON.parse(JSON.stringify(child));
+          data.id = generateId();
+          newPage.addElement(data);
+        });
+        
+        await fillProductToPage(newPage, match);
+        
+        if (autoDownload) {
+          await new Promise(r => setTimeout(r, 300));
+          const url = await store.toDataURL({ pageId: newPage.id, mimeType: 'image/png', quality: 1 });
+          const link = document.createElement('a');
+          link.download = `${match.name.replace(/[^a-z0-9]/gi, '-').toLowerCase()}.png`;
+          link.href = url;
+          link.click();
+        }
+      } else {
+        // First product - fill current page
+        await fillProductToPage(templatePage, match);
+        if (autoDownload) {
+          await new Promise(r => setTimeout(r, 300));
+          const url = await store.toDataURL({ pageId: templatePage.id, mimeType: 'image/png', quality: 1 });
+          const link = document.createElement('a');
+          link.download = `${match.name.replace(/[^a-z0-9]/gi, '-').toLowerCase()}.png`;
+          link.href = url;
+          link.click();
+        }
+      }
+
+      filled++;
+      setMessage(`Done: ${match.name} (${i + 1}/${lines.length})`);
+      
+      if (i < lines.length - 1) {
+        await new Promise(r => setTimeout(r, 500));
+      }
+    }
+
+    setMessage(`Batch complete! Filled ${filled} of ${lines.length} products.`);
+    setLoading(false);
+  };
 
   const renderProductsTab = () => (
     <div style={{ padding: 12 }}>
@@ -409,7 +396,7 @@ export const MasterPanel = observer(({ store }) => {
       <Checkbox
         checked={autoDownload}
         onChange={(e) => setAutoDownload(e.target.checked)}
-        label="Auto-download after adding"
+        label="Auto-download after filling"
         style={{ marginBottom: 12 }}
       />
 
@@ -485,7 +472,7 @@ export const MasterPanel = observer(({ store }) => {
                 <div style={{ fontSize: 8, color: '#aaa', marginBottom: 8 }}>
                   {product.specs.slice(0, 2).map((s, i) => (
                     <span key={i} style={{ display: 'block' }}>
-                      <strong>{s.label}:</strong> {s.value.substring(0, 20)}
+                      {s.label}: {s.value.substring(0, 20)}
                     </span>
                   ))}
                 </div>
@@ -501,7 +488,7 @@ export const MasterPanel = observer(({ store }) => {
                   addToCanvas(product);
                 }}
               >
-                Add to Canvas
+                Fill Template
               </Button>
             </Card>
           ))}
@@ -511,13 +498,13 @@ export const MasterPanel = observer(({ store }) => {
       {selectedProduct && (
         <Callout style={{ marginTop: 12, fontSize: 11 }}>
           <div style={{ fontWeight: 'bold', marginBottom: 8 }}>
-            Template Variables for {selectedProduct.name}:
+            Variables for {selectedProduct.name}:
           </div>
           <div style={{ fontFamily: 'monospace', fontSize: 10 }}>
             <div>{'{{name}}'} = {selectedProduct.name}</div>
             <div>{'{{price}}'} = {selectedProduct.price}</div>
-            {selectedProduct.images.map((img, i) => (
-              <div key={i}>{img.varName} = Image {i + 1}</div>
+            {selectedProduct.images.map((img) => (
+              <div key={img.varName}>{img.varName} = {img.original.substring(0, 30)}...</div>
             ))}
             {selectedProduct.specs.slice(0, 4).map((spec) => (
               <div key={spec.varName}>
@@ -530,23 +517,74 @@ export const MasterPanel = observer(({ store }) => {
     </div>
   );
 
+  const renderBatchTab = () => (
+    <div style={{ padding: 12 }}>
+      <p style={{ fontSize: 11, color: '#888', marginBottom: 12 }}>
+        Enter product names (one per line). Matches against loaded catalog.
+      </p>
+
+      <TextArea
+        fill
+        growVertically
+        placeholder={'Samsung Galaxy S24\niPhone 16 Pro\nGoogle Pixel 8'}
+        value={batchInput}
+        onChange={(e) => setBatchInput(e.target.value)}
+        style={{ minHeight: 120, marginBottom: 12 }}
+      />
+
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
+        <Checkbox
+          checked={autoDownload}
+          onChange={(e) => setAutoDownload(e.target.checked)}
+          label="Auto-download each"
+        />
+      </div>
+
+      <Button 
+        fill 
+        intent="primary" 
+        onClick={handleBatchFill}
+        loading={loading}
+        disabled={loading || products.length === 0}
+      >
+        {loading ? 'Processing...' : 'Batch Fill All'}
+      </Button>
+
+      {products.length === 0 && (
+        <Callout intent="warning" style={{ marginTop: 12 }}>
+          Load data source first (Products tab)
+        </Callout>
+      )}
+    </div>
+  );
+
   return (
     <div style={{ height: '100%', background: '#1a1a1b', color: 'white', display: 'flex', flexDirection: 'column' }}>
       <div style={{ padding: 16, borderBottom: '1px solid #333' }}>
         <h3 style={{ margin: 0 }}>Master Catalog</h3>
         <p style={{ fontSize: 11, color: '#888', margin: '4px 0 0 0' }}>
-  {products.length} products • {'{{name}} {{price}} {{image1}}-{{image4}}'}
-</p>
+          {products.length} products loaded
+        </p>
       </div>
 
-      <Tabs selectedTabId="products" style={{ flex: 1, overflow: 'hidden' }}>
-        <Tab id="source" title="Source" panel={renderDataSourceTab()} />
+      <Tabs 
+        selectedTabId={activeTab} 
+        onChange={setActiveTab}
+        style={{ flex: 1, overflow: 'hidden' }}
+      >
         <Tab id="products" title="Products" panel={renderProductsTab()} />
+        <Tab id="batch" title="Batch" panel={renderBatchTab()} />
       </Tabs>
 
       {message && (
         <Callout intent="success" style={{ margin: 12 }}>
           {message}
+        </Callout>
+      )}
+
+      {error && (
+        <Callout intent="danger" style={{ margin: 12 }}>
+          {error}
         </Callout>
       )}
     </div>
