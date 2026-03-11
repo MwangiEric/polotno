@@ -83,7 +83,7 @@ const buildWsrvUrl = (originalUrl, width, height) => {
   
   const w = Math.round(width);
   const h = Math.round(height);
-  return `https://wsrv.nl/?url=${encodeURIComponent(cleanUrl)}&w=${w}&h=${h}&fit=cover&n=-1`;
+  return `https://wsrv.nl/?url=${encodeURIComponent(cleanUrl)}&w=${w}&h=${h}&fit=contain&n=-1`;
 };
 
 export const ProductImagesSearchPanel = observer(({ store }) => {
