@@ -68,9 +68,22 @@ const formatPrice = (priceStr, divideBy100 = false) => {
 
 // Build wsrv URL to prepare image for Polotno placeholder
 const buildWsrvUrl = (originalUrl, width, height) => {
+  // Handle nested wsrv URLs
+  let cleanUrl = originalUrl;
+  
+  if (originalUrl && originalUrl.includes('wsrv.nl/?url=')) {
+    try {
+      const parsed = new URL(originalUrl);
+      const innerUrl = parsed.searchParams.get('url');
+      if (innerUrl) cleanUrl = decodeURIComponent(innerUrl);
+    } catch (e) {
+      // If parsing fails, use original
+    }
+  }
+  
   const w = Math.round(width);
   const h = Math.round(height);
-  return `https://wsrv.nl/?url=${encodeURIComponent(originalUrl)}&w=${w}&h=${h}&fit=cover&n=-1`;
+  return `https://wsrv.nl/?url=${encodeURIComponent(cleanUrl)}&w=${w}&h=${h}&fit=cover&n=-1`;
 };
 
 export const ProductImagesSearchPanel = observer(({ store }) => {
