@@ -45,7 +45,7 @@ const cleanSpec = (spec) => {
   if (!spec) return '';
   return spec
     .replace(/^(RAM|Storage|Battery|Main Camera|Front Camera|Display|Processor|Connectivity|OS|Color|Weight|Dimensions|Network|SIM|Resolution|Refresh Rate|Charging|Water Resistance|Material|Warranty):\s*/i, '')
-    .replace(/^[^:]+:\s*/, '') // Remove any "Label:" prefix
+    .replace(/^[^:]+:\s*/, '')
     .trim();
 };
 
@@ -53,7 +53,6 @@ const cleanSpec = (spec) => {
 const formatPrice = (priceStr, divideBy100 = false) => {
   if (!priceStr || priceStr === 'N/A') return 'N/A';
   
-  // Extract numbers from price string
   const numMatch = priceStr.toString().replace(/[^0-9]/g, '');
   if (!numMatch) return priceStr;
   
@@ -65,6 +64,13 @@ const formatPrice = (priceStr, divideBy100 = false) => {
   }
   
   return `KSh ${num.toLocaleString()}`;
+};
+
+// Build wsrv URL to prepare image for Polotno placeholder
+const buildWsrvUrl = (originalUrl, width, height) => {
+  const w = Math.round(width);
+  const h = Math.round(height);
+  return `https://wsrv.nl/?url=${encodeURIComponent(originalUrl)}&w=${w}&h=${h}&fit=cover&n=-1`;
 };
 
 export const ProductImagesSearchPanel = observer(({ store }) => {
@@ -96,8 +102,6 @@ export const ProductImagesSearchPanel = observer(({ store }) => {
     try {
       const apiUrl = `${storeConfig.api}?q=${encodeURIComponent(query.trim())}`;
       const proxyUrl = `${CORS_PROXY}${apiUrl}`;
-
-      console.log('Fetching:', proxyUrl);
 
       const res = await fetch(proxyUrl);
       if (!res.ok) {
@@ -141,20 +145,17 @@ export const ProductImagesSearchPanel = observer(({ store }) => {
     let allResults = [];
 
     if (searchAllStores) {
-      // Search all stores
       const storeKeys = Object.keys(STORES);
       for (const storeKey of storeKeys) {
         const results = await searchStore(storeKey, query);
         allResults = [...allResults, ...results];
       }
     } else {
-      // Search selected store only
       allResults = await searchStore(selectedStore, query);
     }
 
     if (allResults.length === 0) return null;
 
-    // Find best match
     const searchLower = query.toLowerCase().trim();
     let bestMatch = allResults.find(r => 
       r.name.toLowerCase().trim() === searchLower
@@ -170,7 +171,6 @@ export const ProductImagesSearchPanel = observer(({ store }) => {
       bestMatch = allResults[0];
     }
 
-    // Override price if provided
     if (providedPrice) {
       bestMatch.price = formatPrice(`KSh${providedPrice}`, priceDivideBy100);
     }
@@ -226,6 +226,7 @@ export const ProductImagesSearchPanel = observer(({ store }) => {
   const createCleanPage = (templatePage) => {
     const templateData = templatePage.toJSON();
 
+    // Capture non-template images (uploaded logos, etc.)
     const uploadedImages = {};
     templatePage.children.forEach((el, idx) => {
       if (el.type === 'image' && !/^image\d+$/i.test(el.name) && !/\{\{image\d+\}\}/i.test(el.name)) {
@@ -240,8 +241,7 @@ export const ProductImagesSearchPanel = observer(({ store }) => {
     });
 
     templateData.children.forEach((child, idx) => {
-      const elementData = JSON.parse(JSON.stringify(child));
-      elementData.id = generateId();
+      const elementData = { ...child, id: generateId() };
 
       if (elementData.type === 'image') {
         const isTemplateImage = /^image\d+$/i.test(elementData.name) || 
@@ -249,10 +249,6 @@ export const ProductImagesSearchPanel = observer(({ store }) => {
 
         if (isTemplateImage) {
           elementData.src = '';
-          elementData.cropX = 0;
-          elementData.cropY = 0;
-          elementData.cropWidth = 1;
-          elementData.cropHeight = 1;
         } else {
           elementData.src = uploadedImages[idx] || '';
         }
@@ -265,6 +261,7 @@ export const ProductImagesSearchPanel = observer(({ store }) => {
   };
 
   const fillPage = async (page, item) => {
+    // Replace text placeholders
     const textMap = {
       '{{name}}': item.name,
       '{{price}}': item.price,
@@ -300,6 +297,7 @@ export const ProductImagesSearchPanel = observer(({ store }) => {
       }
     });
 
+    // Process image placeholders - wsrv prepares, Polotno places
     const imageElements = [];
     page.children.forEach(el => {
       if (el.type !== 'image') return;
@@ -310,30 +308,27 @@ export const ProductImagesSearchPanel = observer(({ store }) => {
       if (!match) return;
 
       const idx = parseInt(match[1]) - 1;
-      const src = item.images[idx];
+      const originalSrc = item.images[idx];
 
-      if (src) {
-        imageElements.push({ el, src, idx });
-      }
+      if (!originalSrc) return;
+
+      // wsrv prepares image to exact placeholder dimensions
+      const processedSrc = buildWsrvUrl(originalSrc, el.width, el.height);
+      
+      imageElements.push({ el, src: processedSrc });
     });
 
+    // Load and set images - Polotno handles layout naturally
     for (const { el, src } of imageElements) {
       try {
         await loadImage(src);
-        el.set({ 
-          src, 
-          visible: true,
-          cropX: 0,
-          cropY: 0,
-          cropWidth: 1,
-          cropHeight: 1
-        });
+        el.set({ src, visible: true });
         if (imageElements.length > 1) {
           await new Promise(r => setTimeout(r, 300));
         }
       } catch (err) {
         console.warn('Image failed to load:', src);
-        el.set({ src, visible: true });
+        el.set({ visible: false });
       }
     }
   };
