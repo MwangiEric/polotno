@@ -28,6 +28,10 @@ const STORES = {
   'tripplek.co.ke': {
     name: 'Tripple K',
     api: 'https://myrhubpy.vercel.app/woocommerce/search/tripplek.co.ke.json'
+  },
+  'sweech.co.ke': {
+    name: 'Sweech',
+    api: 'https://myrhubpy.vercel.app/woocommerce/search/sweech.co.ke.json'
   }
 };
 
@@ -66,24 +70,31 @@ const formatPrice = (priceStr, divideBy100 = false) => {
   return `KSh ${num.toLocaleString()}`;
 };
 
-// Build wsrv URL to prepare image for Polotno placeholder
-const buildWsrvUrl = (originalUrl, width, height) => {
-  // Handle nested wsrv URLs
-  let cleanUrl = originalUrl;
+// Extract original URL from nested wsrv URLs
+const extractOriginalUrl = (url) => {
+  if (!url) return url;
   
-  if (originalUrl && originalUrl.includes('wsrv.nl/?url=')) {
+  if (url.includes('wsrv.nl/?url=')) {
     try {
-      const parsed = new URL(originalUrl);
-      const innerUrl = parsed.searchParams.get('url');
-      if (innerUrl) cleanUrl = decodeURIComponent(innerUrl);
+      const urlObj = new URL(url);
+      const nestedUrl = urlObj.searchParams.get('url');
+      if (nestedUrl) {
+        return decodeURIComponent(nestedUrl);
+      }
     } catch (e) {
-      // If parsing fails, use original
+      console.warn('Failed to parse wsrv URL:', url);
     }
   }
   
+  return url;
+};
+
+// Build wsrv URL with contain fit and trim
+const buildWsrvUrl = (originalUrl, width, height) => {
+  const cleanUrl = extractOriginalUrl(originalUrl);
   const w = Math.round(width);
   const h = Math.round(height);
-  return `https://wsrv.nl/?url=${encodeURIComponent(cleanUrl)}&w=${w}&h=${h}&fit=contain&n=-1&trim=10`;
+  return `https://wsrv.nl/?url=${encodeURIComponent(cleanUrl)}&w=${w}&h=${h}&fit=contain&trim=10&n=-1`;
 };
 
 export const ProductImagesSearchPanel = observer(({ store }) => {
@@ -239,7 +250,6 @@ export const ProductImagesSearchPanel = observer(({ store }) => {
   const createCleanPage = (templatePage) => {
     const templateData = templatePage.toJSON();
 
-    // Capture non-template images (uploaded logos, etc.)
     const uploadedImages = {};
     templatePage.children.forEach((el, idx) => {
       if (el.type === 'image' && !/^image\d+$/i.test(el.name) && !/\{\{image\d+\}\}/i.test(el.name)) {
@@ -274,7 +284,6 @@ export const ProductImagesSearchPanel = observer(({ store }) => {
   };
 
   const fillPage = async (page, item) => {
-    // Replace text placeholders
     const textMap = {
       '{{name}}': item.name,
       '{{price}}': item.price,
@@ -310,7 +319,6 @@ export const ProductImagesSearchPanel = observer(({ store }) => {
       }
     });
 
-    // Process image placeholders - wsrv prepares, Polotno places
     const imageElements = [];
     page.children.forEach(el => {
       if (el.type !== 'image') return;
@@ -325,13 +333,11 @@ export const ProductImagesSearchPanel = observer(({ store }) => {
 
       if (!originalSrc) return;
 
-      // wsrv prepares image to exact placeholder dimensions
       const processedSrc = buildWsrvUrl(originalSrc, el.width, el.height);
       
       imageElements.push({ el, src: processedSrc });
     });
 
-    // Load and set images - Polotno handles layout naturally
     for (const { el, src } of imageElements) {
       try {
         await loadImage(src);
