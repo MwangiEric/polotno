@@ -6,10 +6,48 @@ import { SectionTab } from 'polotno/side-panel';
 import { 
   Button, Callout, TextArea, Tag, Checkbox, 
   HTMLSelect, InputGroup, Tabs, Tab, Card,
-  Spinner, NonIdealState
+  Spinner, NonIdealState, ProgressBar
 } from '@blueprintjs/core';
 
 const CORS_PROXY = 'https://cors.ericmwangi13.workers.dev/?url=';
+
+// Rate limiter: 1 request per second to avoid flagging
+const createRateLimiter = (intervalMs = 1000) => {
+  let lastRequestTime = 0;
+  let queue = [];
+  let processing = false;
+
+  const processQueue = async () => {
+    if (processing || queue.length === 0) return;
+    processing = true;
+
+    while (queue.length > 0) {
+      const now = Date.now();
+      const timeSinceLastRequest = now - lastRequestTime;
+      
+      if (timeSinceLastRequest < intervalMs) {
+        await new Promise(resolve => setTimeout(resolve, intervalMs - timeSinceLastRequest));
+      }
+
+      const { fn, resolve, reject } = queue.shift();
+      lastRequestTime = Date.now();
+
+      try {
+        const result = await fn();
+        resolve(result);
+      } catch (err) {
+        reject(err);
+      }
+    }
+
+    processing = false;
+  };
+
+  return (fn) => new Promise((resolve, reject) => {
+    queue.push({ fn, resolve, reject });
+    processQueue();
+  });
+};
 
 // Store configurations
 const STORES = {
@@ -102,15 +140,21 @@ export const ProductImagesSearchPanel = observer(({ store }) => {
   const [selectedStore, setSelectedStore] = useState('smartphoneskenya.co.ke');
   const [searchQuery, setSearchQuery] = useState('');
   const [batchInput, setBatchInput] = useState('');
+  const [autoBatchInput, setAutoBatchInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [batchResults, setBatchResults] = useState([]);
+  const [autoBatchResults, setAutoBatchResults] = useState([]);
   const [feedback, setFeedback] = useState('');
   const [autoDownload, setAutoDownload] = useState(false);
   const [autoAddFirst, setAutoAddFirst] = useState(false);
   const [priceDivideBy100, setPriceDivideBy100] = useState(false);
   const [searchAllStores, setSearchAllStores] = useState(false);
+  const [progress, setProgress] = useState({ current: 0, total: 0, status: '' });
+
+  // Create rate limiter instance
+  const rateLimiter = createRateLimiter(1000); // 1 request per second
 
   const parseInputLine = (line) => {
     const priceMatch = line.match(/(?:KSh\s*)?([\d,]+)\s*$/i);
@@ -200,6 +244,10 @@ export const ProductImagesSearchPanel = observer(({ store }) => {
     }
 
     return bestMatch;
+  };
+
+  const searchSingleWithRateLimit = async (query, providedPrice) => {
+    return rateLimiter(() => searchSingle(query, providedPrice));
   };
 
   const handleSearch = async () => {
@@ -420,6 +468,81 @@ export const ProductImagesSearchPanel = observer(({ store }) => {
     setFeedback(`Done! Filled ${filled.length} of ${lines.length} posters.${autoDownload ? ' All downloaded.' : ''}`);
   };
 
+  // Auto Batch Mode: paste name + price, auto-search with rate limit, auto-download
+  const handleAutoBatch = async () => {
+    const lines = autoBatchInput.trim().split('\n').filter(Boolean);
+    if (lines.length === 0) {
+      setError('Paste at least one product with price (e.g., "Samsung S24 125000")');
+      return;
+    }
+
+    setLoading(true);
+    setError('');
+    setAutoBatchResults([]);
+    setProgress({ current: 0, total: lines.length, status: 'Starting...' });
+    
+    const filled = [];
+    const failed = [];
+    const templatePage = store.activePage;
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim();
+      const { name: searchName, price: providedPrice } = parseInputLine(line);
+
+      if (!searchName) {
+        failed.push({ line, reason: 'Empty name' });
+        continue;
+      }
+
+      setProgress({ 
+        current: i + 1, 
+        total: lines.length, 
+        status: `Searching: ${searchName}...` 
+      });
+
+      // Rate limited search - 1 request per second
+      const item = await searchSingleWithRateLimit(searchName, providedPrice);
+      
+      if (!item) {
+        failed.push({ line: searchName, reason: 'No match found' });
+        continue;
+      }
+
+      setProgress({ 
+        current: i + 1, 
+        total: lines.length, 
+        status: `Generating: ${item.name}...` 
+      });
+
+      try {
+        const newPage = createCleanPage(templatePage);
+        store.selectPage(newPage.id);
+        await fillPage(newPage, item);
+
+        // Always auto-download in this mode
+        await new Promise(r => setTimeout(r, 300));
+        await downloadPage(newPage, item.name);
+
+        filled.push(item);
+      } catch (err) {
+        failed.push({ line: searchName, reason: `Error: ${err.message}` });
+      }
+
+      // Small delay between generations to avoid overwhelming browser
+      if (i < lines.length - 1) {
+        await new Promise(r => setTimeout(r, 500));
+      }
+    }
+
+    setAutoBatchResults(filled);
+    setLoading(false);
+    setProgress({ current: lines.length, total: lines.length, status: `Done! ${filled.length} generated, ${failed.length} failed` });
+    
+    if (failed.length > 0) {
+      console.log('Failed items:', failed);
+    }
+  };
+
   const renderSearchTab = () => (
     <div style={{ padding: 12 }}>
       <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
@@ -615,6 +738,106 @@ export const ProductImagesSearchPanel = observer(({ store }) => {
     </div>
   );
 
+  // New Auto Batch Tab - Rate limited, auto-download, top result only
+  const renderAutoBatchTab = () => (
+    <div style={{ padding: 12 }}>
+      <Callout intent="primary" style={{ marginBottom: 12 }}>
+        <div style={{ fontSize: 12 }}>
+          <strong>Auto Batch Mode:</strong> Paste products with prices. Each line = one poster. 
+          Searches are rate-limited (1/sec) to avoid flagging. Top result auto-selected. 
+          Images auto-download.
+        </div>
+      </Callout>
+
+      <TextArea
+        large
+        fill
+        growVertically
+        placeholder={'Samsung Galaxy S24 Ultra 125000\niPhone 16 Pro 145000\nOnePlus Buds 4 9000\nXiaomi 14T 85000'}
+        value={autoBatchInput}
+        onChange={(e) => setAutoBatchInput(e.target.value)}
+        style={{ minHeight: 180, resize: 'vertical', marginBottom: 12 }}
+      />
+
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
+        <Checkbox
+          checked={priceDivideBy100}
+          onChange={(e) => setPriceDivideBy100(e.target.checked)}
+          label="Price ÷ 100"
+        />
+        <Tag minimal style={{ fontSize: 11 }}>
+          Rate: 1 req/sec • Auto-download ON
+        </Tag>
+      </div>
+
+      {loading && progress.total > 0 && (
+        <div style={{ marginBottom: 16 }}>
+          <ProgressBar 
+            value={progress.current / progress.total} 
+            intent="primary"
+            stripes={true}
+          />
+          <div style={{ fontSize: 11, color: '#888', marginTop: 6, display: 'flex', justifyContent: 'space-between' }}>
+            <span>{progress.status}</span>
+            <span>{progress.current} / {progress.total}</span>
+          </div>
+        </div>
+      )}
+
+      <Button 
+        large 
+        intent="success" 
+        onClick={handleAutoBatch} 
+        loading={loading} 
+        disabled={loading || !autoBatchInput.trim()}
+        fill
+      >
+        {loading ? 'Processing...' : 'Start Auto Generation'}
+      </Button>
+
+      {error && (
+        <Callout intent="danger" style={{ marginTop: 12 }}>
+          {error}
+        </Callout>
+      )}
+
+      {autoBatchResults.length > 0 && !loading && (
+        <div style={{ marginTop: 16 }}>
+          <Callout intent="success" style={{ marginBottom: 12 }}>
+            Generated {autoBatchResults.length} posters. Check your downloads folder.
+          </Callout>
+          
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 8, maxHeight: '300px', overflowY: 'auto' }}>
+            {autoBatchResults.map((item, i) => (
+              <div 
+                key={i}
+                style={{ 
+                  background: '#2d2d2e', 
+                  padding: 6, 
+                  borderRadius: 4, 
+                  border: '1px solid #444',
+                  fontSize: 10
+                }}
+              >
+                <img 
+                  src={item.images[0]} 
+                  style={{ width: '100%', height: 80, objectFit: 'contain', borderRadius: 2 }} 
+                  alt="" 
+                />
+                <div style={{ marginTop: 4, height: 32, overflow: 'hidden', lineHeight: 1.2 }}>
+                  {item.name}
+                </div>
+                <Tag minimal intent="success" style={{ fontSize: 9, marginTop: 2 }}>
+                  {item.price}
+                </Tag>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+
   return (
     <div style={{ height: '100%', background: '#1a1a1b', color: 'white', display: 'flex', flexDirection: 'column' }}>
       <div style={{ padding: 16, borderBottom: '1px solid #333' }}>
@@ -626,16 +849,9 @@ export const ProductImagesSearchPanel = observer(({ store }) => {
         onChange={setActiveTab}
         style={{ flex: 1, overflow: 'hidden' }}
       >
-        <Tab 
-          id="search" 
-          title="Search" 
-          panel={renderSearchTab()}
-        />
-        <Tab 
-          id="batch" 
-          title="Batch Fill" 
-          panel={renderBatchTab()}
-        />
+        <Tab id="search" title="Search" panel={renderSearchTab()} />
+        <Tab id="batch" title="Batch Fill" panel={renderBatchTab()} />
+        <Tab id="autobatch" title="Auto Batch" panel={renderAutoBatchTab()} />
       </Tabs>
     </div>
   );
