@@ -28,6 +28,7 @@ import { AssetsSection } from './sections/assets-panel';
 import { ExportToolsSection } from './sections/export-tools';
 import { BrandsSection } from './sections/brands-panel';        // ← NEW: Brand templates
 import { MasterSection } from './sections/master-panel';       // ← NEW: Master catalog
+import { CsvTemplateSection } from './sections/csv-template-panel';
 
 // Create Polotno store (use your real key from Vercel env)
 const store = createStore({
@@ -55,6 +56,7 @@ const mySections = [
   ProductImagesSearchSection,   // Gadgets / Batch Fill
   BrandsSection,                // ← NEW: Brand templates (Kenyatronics, Tripple K)
   MasterSection,                // ← NEW: Master catalog with CSV/Google Sheets
+CsvTemplateSection,
 ];
 
 export default function Editor() {
