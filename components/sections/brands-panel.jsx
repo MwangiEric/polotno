@@ -16,19 +16,19 @@ const BRANDS = {
     name: "Kenyatronics",
     phone: "0733 565 861",
     whatsapp: "0733 565 861",
-    webaddress: "www.kenyatronics.com",
+    webaddress: "https://tripplek.co.ke/",
     logo: "https://ik.imagekit.io/ericmwangi/tklogo.png",
     primary: "#52D3D8",
     secondary: "#F39C12",
     fontHeader: "Archivo Black",
     fontBody: "Roboto Condensed",
-    description: "Electronics & Tech Retailer"
+    description: "Mobile Phones & Accessories"
   },
   tripplek: {
     name: "Tripple K Communications",
     phone: "0733 565 861",
     whatsapp: "0733 565 861",
-    webaddress: "www.tripplek.co.ke",
+    webaddress: "https://tripplek.co.ke/",
     logo: "https://ik.imagekit.io/ericmwangi/tklogo.png",
     primary: "#8B1A1A",
     secondary: "#45B39D",
@@ -44,6 +44,23 @@ const decodeHtmlEntities = (text) => {
   const textarea = document.createElement('textarea');
   textarea.innerHTML = text;
   return textarea.value;
+};
+
+// Parse short_description HTML into clean spec values (no labels)
+const parseSpecsFromDescription = (html) => {
+  const decoded = decodeHtmlEntities(html);
+  const lines = decoded
+    .replace(/<\/?p>/g, '')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .split('\n')
+    .map(line => line.trim())
+    .filter(line => line.length > 0);
+
+  // Remove labels like "Display:", "Processor:", etc. — keep only the value
+  return lines.map(line => {
+    const colonIndex = line.indexOf(':');
+    return colonIndex !== -1 ? line.slice(colonIndex + 1).trim() : line;
+  });
 };
 
 export const BrandsPanel = observer(({ store }) => {
